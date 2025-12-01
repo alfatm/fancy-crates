@@ -1,0 +1,9 @@
+[registry]
+global-credential-providers = ["cargo:token"]
+
+[registries]
+public-registry = { index = "sparse+http://localhost:8000/api/v1/crates/" }
+
+[registries.private-registry]
+index = "sparse+http://localhost:8001/api/v1/crates/"
+token = "Zy9HhJ02RJmg0GCrgLfaCVfU6IwDfhXD"

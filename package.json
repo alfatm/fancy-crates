@@ -31,6 +31,12 @@
     "workspaceContains:**/Cargo.toml"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "sparse-crates.refresh",
+        "title": "Sparse Crates: Refresh Dependencies"
+      }
+    ],
     "configuration": {
       "title": "Sparse Crates",
       "properties": {
@@ -95,21 +101,25 @@
   "type": "module",
   "scripts": {
     "vscode:prepublish": "pnpm run esbuild-base --minify",
-    "esbuild-base": "tsc && rome ci src && esbuild src/extension.ts --outfile=out/extension.cjs --bundle --external:vscode --platform=node --target=node16",
+    "esbuild-base": "tsc && biome ci src && esbuild src/extension/index.ts --outfile=out/extension.cjs --bundle --external:vscode --platform=node --target=node16",
     "build": "pnpm run esbuild-base --sourcemap",
     "watch": "pnpm run esbuild-base --sourcemap --watch",
-    "package": "pnpm vsce package --no-dependencies"
+    "package": "pnpm vsce package --no-dependencies",
+    "build:cli": "tsc && esbuild src/cli/index.ts --outfile=out/cli.cjs --bundle --platform=node --target=node16",
+    "cli": "node out/cli.cjs",
+    "validate": "pnpm run build:cli && node out/cli.cjs"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.8",
     "@types/eslint": "^8.21.3",
     "@types/node": "^18.15.3",
     "@types/semver": "^7.3.13",
     "@types/vscode": "1.72.0",
     "esbuild": "^0.17.12",
-    "rome": "^11.0.0",
     "typescript": "^5.0.2"
   },
   "dependencies": {
+    "commander": "^14.0.2",
     "node-fetch": "^3.3.1",
     "semver": "^7.3.8",
     "toml-eslint-parser": "^0.5.0"
