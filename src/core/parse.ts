@@ -8,7 +8,7 @@ import type {
   TOMLTable,
 } from 'toml-eslint-parser/lib/ast'
 
-import type { Dependency } from './types.js'
+import type { Dependency, DependencySource } from './types.js'
 
 /**
  * Parses `Cargo.toml` tables and returns all dependencies that have valid semver requirements.
@@ -60,11 +60,13 @@ export function parseCargoDependencies(body: TOMLTable[]): Dependency[] {
     .filter((d): d is Dependency => d !== undefined)
 }
 
-/** Parses the body of a Cargo dependency table that represents a single dependency
- * with a valid semver requirement.
+/** Parses the body of a Cargo dependency table that represents a single dependency.
+ * Supports registry dependencies with version, path dependencies, and git dependencies.
  * ## Example Inline Table
  * ```toml
  * clap = { version = "4" }
+ * local_crate = { path = "../local_crate" }
+ * git_crate = { git = "https://github.com/user/repo", branch = "main" }
  * ```
  * ## Example Table
  * ```toml
@@ -78,6 +80,12 @@ function parseSingleDependency(crateName: string, body: TOMLKeyValue[]): Depende
   let versionRaw: string | undefined
   let registry: string | undefined
   let packageName: string | undefined
+  let pathValue: string | undefined
+  let gitValue: string | undefined
+  let gitBranch: string | undefined
+  let gitTag: string | undefined
+  let gitRev: string | undefined
+
   for (const node of body) {
     const firstKey = node.key.keys[0]
     if (node.key.keys.length === 1 && firstKey !== undefined) {
@@ -95,18 +103,60 @@ function parseSingleDependency(crateName: string, body: TOMLKeyValue[]): Depende
         packageName = value.value
       } else if (key === 'registry' && isTOMLStringValue(value)) {
         registry = value.value
+      } else if (key === 'path' && isTOMLStringValue(value)) {
+        pathValue = value.value
+        if (line === undefined) {
+          line = node.loc.end.line - 1
+        }
+      } else if (key === 'git' && isTOMLStringValue(value)) {
+        gitValue = value.value
+        if (line === undefined) {
+          line = node.loc.end.line - 1
+        }
+      } else if (key === 'branch' && isTOMLStringValue(value)) {
+        gitBranch = value.value
+      } else if (key === 'tag' && isTOMLStringValue(value)) {
+        gitTag = value.value
+      } else if (key === 'rev' && isTOMLStringValue(value)) {
+        gitRev = value.value
       }
     }
   }
-  if (version !== undefined && versionRaw !== undefined && line !== undefined) {
+
+  // Determine the source type
+  const source: DependencySource = pathValue
+    ? { type: 'path', path: pathValue }
+    : gitValue
+      ? { type: 'git', git: gitValue, branch: gitBranch, tag: gitTag, rev: gitRev }
+      : { type: 'registry', registry }
+
+  // For registry dependencies, version is required
+  if (source.type === 'registry') {
+    if (version !== undefined && versionRaw !== undefined && line !== undefined) {
+      return {
+        name: packageName ?? crateName,
+        version,
+        versionRaw,
+        line,
+        registry,
+        source,
+      }
+    }
+    return undefined
+  }
+
+  // For path/git dependencies, version is optional (will be resolved from source)
+  if (line !== undefined) {
     return {
       name: packageName ?? crateName,
       version,
       versionRaw,
       line,
       registry,
+      source,
     }
   }
+
   return undefined
 }
 
@@ -138,11 +188,12 @@ function parseMultipleDependencies(body: TOMLKeyValue[]): Dependency[] {
             // TOML parser lines are 1-based, but VSCode lines are 0-based
             line: node.loc.end.line - 1,
             registry: undefined,
+            source: { type: 'registry', registry: undefined },
           }
         }
         return undefined
       } else if (value.type === 'TOMLInlineTable') {
-        // crate_name = { version = "version" ... }
+        // crate_name = { version = "version" ... } or { path = "..." } or { git = "..." }
         return parseSingleDependency(key, value.body)
       }
       return undefined

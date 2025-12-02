@@ -1,0 +1,14 @@
+[package]
+name = "git-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Test git dependency from GitHub with tag
+regex = { git = "https://github.com/rust-lang/regex", tag = "1.10.3" }
+
+# Test git dependency from GitHub with branch
+serde_branch = { git = "https://github.com/serde-rs/serde", branch = "master", package = "serde" }
+
+# Test git dependency from GitHub with rev (commit SHA)
+serde_rev = { git = "https://github.com/serde-rs/serde", rev = "v1.0.193", package = "serde" }

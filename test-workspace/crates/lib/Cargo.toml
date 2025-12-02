@@ -1,0 +1,4 @@
+[package]
+name = "emoji-clock"
+version = "0.1.5"
+edition = "2021"

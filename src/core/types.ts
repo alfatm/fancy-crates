@@ -1,19 +1,29 @@
 import type semver from 'semver'
 
 /**
+ * Source type for a dependency
+ */
+export type DependencySource =
+  | { type: 'registry'; registry?: string }
+  | { type: 'path'; path: string }
+  | { type: 'git'; git: string; branch?: string; tag?: string; rev?: string }
+
+/**
  * A Cargo dependency specification
  */
 export interface Dependency {
   /** The crate name of the dependency on the registry. */
   name: string
-  /** The compatible version range of the dependency. */
-  version: semver.Range
+  /** The compatible version range of the dependency (undefined for path/git without version). */
+  version?: semver.Range
   /** The original version string as specified in Cargo.toml */
-  versionRaw: string
+  versionRaw?: string
   /** The name of the registry, if explicitly given. */
   registry?: string
   /** The line number of the dependency's version requirement. 0-based. */
   line: number
+  /** The source of the dependency (registry, path, or git) */
+  source: DependencySource
 }
 
 /**
@@ -103,4 +113,35 @@ export interface Logger {
 export interface FetchOptions {
   logger?: Logger
   userAgent?: string
+  /** Git source resolution options */
+  gitOptions?: GitSourceOptions
+}
+
+/**
+ * Options for git source resolution
+ */
+export interface GitSourceOptions {
+  /**
+   * Enable git archive method (requires git, sh, tar).
+   * Only works with servers that support `git archive --remote`.
+   */
+  enableGitArchive?: boolean
+  /**
+   * (Experimental) Enable shallow clone method for git dependencies.
+   * This creates temporary directories and runs git commands.
+   * Disabled by default.
+   */
+  enableShallowClone?: boolean
+}
+
+/**
+ * Result of checking CLI tool availability
+ */
+export interface CliToolsAvailability {
+  /** Whether git command is available */
+  git: boolean
+  /** Whether sh command is available */
+  sh: boolean
+  /** Whether tar command is available */
+  tar: boolean
 }

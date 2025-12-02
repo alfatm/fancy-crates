@@ -3,8 +3,15 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { Command } from 'commander'
-import type { DependencyValidationResult, Logger, RegistryConfig, ValidatorConfig } from '../core/index.js'
+import type {
+  DependencyValidationResult,
+  GitSourceOptions,
+  Logger,
+  RegistryConfig,
+  ValidatorConfig,
+} from '../core/index.js'
 import {
+  checkCliToolsAvailability,
   DEFAULT_CONFIG,
   DOCS_RS_URL,
   formatDependencyResult,
@@ -54,6 +61,8 @@ interface Options {
   json: boolean
   registry: RegistryConfig[]
   verbose: number
+  gitArchive: boolean
+  experimentalShallowClone: boolean
 }
 
 const program = new Command()
@@ -74,18 +83,29 @@ program
     parseRegistry,
     [],
   )
+  .option('--git-archive', 'Enable git archive method for git dependencies (requires git, sh, tar)', false)
+  .option(
+    '--experimental-shallow-clone',
+    '(Experimental) Enable shallow clone method for git dependencies (requires git)',
+    false,
+  )
   .addHelpText(
     'after',
     `
 Registries are automatically loaded from cargo config (cargo config get registries).
 Use --registry to override or add additional registries.
 
+Git dependency options:
+  --git-archive                  Enable git archive method (requires git, sh, tar on PATH)
+  --experimental-shallow-clone   Enable shallow clone method (experimental, requires git)
+
 Examples:
   $ elder-crates-cli ./Cargo.toml
   $ elder-crates-cli ./Cargo.toml --filter external2 --show-plugin
   $ elder-crates-cli ./Cargo.toml --line 38 --show-plugin
   $ elder-crates-cli ./Cargo.toml --no-cache
-  $ elder-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/`,
+  $ elder-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/
+  $ elder-crates-cli ./Cargo.toml --git-archive --experimental-shallow-clone`,
   )
   .action(main)
 
@@ -121,12 +141,31 @@ async function main(pathArg: string, options: Options) {
     error: verbosity >= 1 ? (msg) => console.error(`[error] ${msg}`) : noop,
   }
 
+  // Build git options
+  const gitOptions: GitSourceOptions = {
+    enableGitArchive: options.gitArchive,
+    enableShallowClone: options.experimentalShallowClone,
+  }
+
+  // Check CLI tools availability if git options are enabled
+  if (gitOptions.enableGitArchive || gitOptions.enableShallowClone) {
+    const cliTools = await checkCliToolsAvailability()
+    if (gitOptions.enableGitArchive && (!cliTools.git || !cliTools.sh || !cliTools.tar)) {
+      console.warn(
+        `Warning: --git-archive requires git, sh, tar. Available: git=${cliTools.git}, sh=${cliTools.sh}, tar=${cliTools.tar}`,
+      )
+    }
+    if (gitOptions.enableShallowClone && !cliTools.git) {
+      console.warn('Warning: --experimental-shallow-clone requires git but it is not available')
+    }
+  }
+
   const config: ValidatorConfig = {
     ...DEFAULT_CONFIG,
     useCargoCache: useCache,
     registries,
     sourceReplacement,
-    fetchOptions: { logger },
+    fetchOptions: { logger, gitOptions },
   }
 
   // Read file content for line display

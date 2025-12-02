@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import type semver from 'semver'
 
-import type { DependencyStatus, DependencyValidationResult } from './types.js'
+import type { DependencySource, DependencyStatus, DependencyValidationResult } from './types.js'
 
 // Status symbols with colors:
 // 🟢 latest - green
@@ -43,6 +43,7 @@ export interface FormattedDependency {
 export function formatDependencyResult(result: DependencyValidationResult, docsUrl?: string): FormattedDependency {
   const { dependency, resolved, latestStable, latest, locked, status, error } = result
   const name = dependency.name
+  const source = dependency.source
 
   if (status === 'error') {
     return {
@@ -78,9 +79,30 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
     decoration = `${symbol} ${targetVersion}`
   }
 
-  const hoverMarkdown = formatHoverMarkdown(resolved, latestStable, latest, locked, name, docsUrl)
+  const hoverMarkdown = formatHoverMarkdown(resolved, latestStable, latest, locked, name, source, docsUrl)
 
   return { status, decoration, hoverMarkdown }
+}
+
+/**
+ * Format the source information for display
+ */
+function formatSourceInfo(source: DependencySource): string {
+  if (source.type === 'path') {
+    return `- **Source**: path \`${source.path}\``
+  }
+  if (source.type === 'git') {
+    let info = `- **Source**: git \`${source.git}\``
+    if (source.branch) {
+      info += ` (branch: ${source.branch})`
+    } else if (source.tag) {
+      info += ` (tag: ${source.tag})`
+    } else if (source.rev) {
+      info += ` (rev: ${source.rev.slice(0, 8)})`
+    }
+    return info
+  }
+  return ''
 }
 
 /**
@@ -92,6 +114,7 @@ function formatHoverMarkdown(
   latest: semver.SemVer,
   locked: semver.SemVer | undefined,
   name: string,
+  source: DependencySource,
   docsUrl?: string,
 ): string {
   const formatVersion = (v: semver.SemVer | null | undefined, label: string): string => {
@@ -101,19 +124,35 @@ function formatHoverMarkdown(
     if (v === undefined) {
       return `- **${label}**: not available`
     }
-    if (docsUrl) {
+    // Only show docs links for registry dependencies
+    if (docsUrl && source.type === 'registry') {
       const url = docsUrl.endsWith('/') ? `${docsUrl}${name}/${v}` : `${docsUrl}/${name}/${v}`
       return `- **${label}**: [${v}](${url})`
     }
     return `- **${label}**: ${v}`
   }
 
-  return [
-    formatVersion(resolved, 'Resolved'),
-    formatVersion(latestStable ?? null, 'Latest Stable'),
-    formatVersion(latest, 'Latest'),
-    formatVersion(locked, 'Locked'),
-  ].join('\n')
+  const lines: string[] = []
+
+  // Add source info for path/git dependencies
+  const sourceInfo = formatSourceInfo(source)
+  if (sourceInfo) {
+    lines.push(sourceInfo)
+  }
+
+  lines.push(formatVersion(resolved, 'Resolved'))
+
+  // For path/git deps, latestStable and latest are the same (from source)
+  if (source.type === 'registry') {
+    lines.push(formatVersion(latestStable ?? null, 'Latest Stable'))
+    lines.push(formatVersion(latest, 'Latest'))
+  } else {
+    lines.push(formatVersion(latest, 'Source Version'))
+  }
+
+  lines.push(formatVersion(locked, 'Locked'))
+
+  return lines.join('\n')
 }
 
 /**

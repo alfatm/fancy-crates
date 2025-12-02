@@ -1,8 +1,10 @@
 import assert from 'node:assert'
 import { describe, test } from 'node:test'
 import semver from 'semver'
-import { parseVersionRange } from './parse'
-import { compareVersionDiff, computeStatus, getMinVersionFromRange, isExactVersion } from './validate'
+import { parseTOML } from 'toml-eslint-parser'
+import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
+import { parseCargoDependencies, parseVersionRange } from './parse.js'
+import { compareVersionDiff, computeStatus, getMinVersionFromRange, isExactVersion } from './validate.js'
 
 function assertDefined<T>(value: T | null | undefined, msg = 'Expected value to be defined'): T {
   assert.ok(value != null, msg)
@@ -315,5 +317,179 @@ describe('semver range.test() for version matching', () => {
       satisfies3.map((v) => v.version),
       ['0.1.0'],
     )
+  })
+})
+
+function parseDependencies(tomlContent: string) {
+  const toml = parseTOML(tomlContent)
+  const tables = toml.body[0].body.filter((v): v is TOMLTable => v.type === 'TOMLTable')
+  return parseCargoDependencies(tables)
+}
+
+describe('parseCargoDependencies with path dependencies', () => {
+  test('parses path dependency', () => {
+    const deps = parseDependencies(`
+[dependencies]
+local_crate = { path = "../local_crate" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'local_crate')
+    assert.strictEqual(dep.source.type, 'path')
+    if (dep.source.type === 'path') {
+      assert.strictEqual(dep.source.path, '../local_crate')
+    }
+    assert.strictEqual(dep.version, undefined)
+  })
+
+  test('parses path dependency with version', () => {
+    const deps = parseDependencies(`
+[dependencies]
+local_crate = { path = "../local_crate", version = "1.0.0" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'local_crate')
+    assert.strictEqual(dep.source.type, 'path')
+    assert.notStrictEqual(dep.version, undefined)
+    assert.strictEqual(dep.versionRaw, '1.0.0')
+  })
+
+  test('parses path dependency with package rename', () => {
+    const deps = parseDependencies(`
+[dependencies]
+my_alias = { path = "../other_crate", package = "other_crate" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'other_crate')
+    assert.strictEqual(dep.source.type, 'path')
+  })
+})
+
+describe('parseCargoDependencies with git dependencies', () => {
+  test('parses git dependency', () => {
+    const deps = parseDependencies(`
+[dependencies]
+regex = { git = "https://github.com/rust-lang/regex.git" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'regex')
+    assert.strictEqual(dep.source.type, 'git')
+    if (dep.source.type === 'git') {
+      assert.strictEqual(dep.source.git, 'https://github.com/rust-lang/regex.git')
+      assert.strictEqual(dep.source.branch, undefined)
+      assert.strictEqual(dep.source.tag, undefined)
+      assert.strictEqual(dep.source.rev, undefined)
+    }
+  })
+
+  test('parses git dependency with branch', () => {
+    const deps = parseDependencies(`
+[dependencies]
+regex = { git = "https://github.com/rust-lang/regex.git", branch = "next" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.source.type, 'git')
+    if (dep.source.type === 'git') {
+      assert.strictEqual(dep.source.branch, 'next')
+    }
+  })
+
+  test('parses git dependency with tag', () => {
+    const deps = parseDependencies(`
+[dependencies]
+regex = { git = "https://github.com/rust-lang/regex.git", tag = "1.10.3" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.source.type, 'git')
+    if (dep.source.type === 'git') {
+      assert.strictEqual(dep.source.tag, '1.10.3')
+    }
+  })
+
+  test('parses git dependency with rev', () => {
+    const deps = parseDependencies(`
+[dependencies]
+regex = { git = "https://github.com/rust-lang/regex.git", rev = "0c0990399270277832fbb5b91a1fa118e6f63dba" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.source.type, 'git')
+    if (dep.source.type === 'git') {
+      assert.strictEqual(dep.source.rev, '0c0990399270277832fbb5b91a1fa118e6f63dba')
+    }
+  })
+
+  test('parses git dependency with version', () => {
+    const deps = parseDependencies(`
+[dependencies]
+regex = { git = "https://github.com/rust-lang/regex.git", version = "1.10" }
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.source.type, 'git')
+    assert.notStrictEqual(dep.version, undefined)
+    assert.strictEqual(dep.versionRaw, '1.10')
+  })
+})
+
+describe('parseCargoDependencies with mixed dependencies', () => {
+  test('parses registry, path, and git dependencies together', () => {
+    const deps = parseDependencies(`
+[dependencies]
+serde = "1.0"
+local_lib = { path = "../lib" }
+git_lib = { git = "https://github.com/user/repo" }
+another = { version = "2.0", registry = "my-registry" }
+`)
+    assert.strictEqual(deps.length, 4)
+
+    const serde = assertDefined(deps.find((d) => d.name === 'serde'))
+    assert.strictEqual(serde.source.type, 'registry')
+    assert.strictEqual(serde.versionRaw, '1.0')
+
+    const local = assertDefined(deps.find((d) => d.name === 'local_lib'))
+    assert.strictEqual(local.source.type, 'path')
+
+    const git = assertDefined(deps.find((d) => d.name === 'git_lib'))
+    assert.strictEqual(git.source.type, 'git')
+
+    const another = assertDefined(deps.find((d) => d.name === 'another'))
+    assert.strictEqual(another.source.type, 'registry')
+    if (another.source.type === 'registry') {
+      assert.strictEqual(another.source.registry, 'my-registry')
+    }
+  })
+
+  test('parses table-style path dependency', () => {
+    const deps = parseDependencies(`
+[dependencies.my_local]
+path = "../my_local"
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'my_local')
+    assert.strictEqual(dep.source.type, 'path')
+  })
+
+  test('parses table-style git dependency with all options', () => {
+    const deps = parseDependencies(`
+[dependencies.my_git]
+git = "https://github.com/user/repo"
+branch = "develop"
+version = "0.5"
+`)
+    assert.strictEqual(deps.length, 1)
+    const dep = assertDefined(deps[0])
+    assert.strictEqual(dep.name, 'my_git')
+    assert.strictEqual(dep.source.type, 'git')
+    if (dep.source.type === 'git') {
+      assert.strictEqual(dep.source.branch, 'develop')
+    }
+    assert.strictEqual(dep.versionRaw, '0.5')
   })
 })

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import semver from 'semver'
 import { ParseError, parseTOML } from 'toml-eslint-parser'
@@ -7,6 +8,7 @@ import { DEFAULT_CONFIG, getRegistry } from './config.js'
 import { fetchVersions } from './fetch.js'
 import { type CargoLockfile, findCargoLockPath, getLockedVersion, readCargoLockfile } from './lockfile.js'
 import { parseCargoDependencies } from './parse.js'
+import { resolveSourceVersion } from './source.js'
 import type {
   Dependency,
   DependencyStatus,
@@ -160,7 +162,7 @@ const findResolvedVersion = (versions: semver.SemVer[], range: semver.Range): se
   return matching[0] ?? null
 }
 
-const validateDependency = async (
+const validateRegistryDependency = async (
   dep: Dependency,
   config: ValidatorConfig,
   lockfile: CargoLockfile | undefined,
@@ -170,10 +172,10 @@ const validateDependency = async (
     const versions = await fetchVersions(dep.name, registry, config.useCargoCache, config.fetchOptions)
 
     versions.sort(semver.compareBuild).reverse()
-    const resolved = findResolvedVersion(versions, dep.version)
+    const resolved = dep.version ? findResolvedVersion(versions, dep.version) : null
     const latestStable = versions.find((v) => v.prerelease.length === 0)
     const latest = versions[0]
-    const locked = lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined
+    const locked = lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined
 
     return {
       dependency: dep,
@@ -181,7 +183,7 @@ const validateDependency = async (
       latestStable,
       latest,
       locked,
-      status: computeStatus(dep.version, latestStable, latest, dep.versionRaw),
+      status: dep.version ? computeStatus(dep.version, latestStable, latest, dep.versionRaw) : 'error',
     }
   } catch (err) {
     return {
@@ -189,11 +191,84 @@ const validateDependency = async (
       resolved: null,
       latestStable: undefined,
       latest: undefined,
-      locked: lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+      locked: lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
       error: err instanceof Error ? err : new Error(String(err)),
       status: 'error',
     }
   }
+}
+
+const validateSourceDependency = async (
+  dep: Dependency,
+  cargoTomlDir: string,
+  config: ValidatorConfig,
+  lockfile: CargoLockfile | undefined,
+): Promise<DependencyValidationResult> => {
+  try {
+    // Resolve the version from the source (path or git)
+    const sourceResolution = await resolveSourceVersion(dep.source, dep.name, cargoTomlDir, config.fetchOptions)
+
+    if (sourceResolution.error || !sourceResolution.version) {
+      return {
+        dependency: dep,
+        resolved: sourceResolution.version ?? null,
+        latestStable: sourceResolution.version,
+        latest: sourceResolution.version,
+        locked: lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+        error: sourceResolution.error,
+        status: sourceResolution.version ? 'latest' : 'error',
+      }
+    }
+
+    const sourceVersion = sourceResolution.version
+
+    // For path/git dependencies, the "latest" is the version from the source
+    // If there's also a version requirement, check if the source version satisfies it
+    if (dep.version) {
+      const satisfies = dep.version.test(sourceVersion)
+      return {
+        dependency: dep,
+        resolved: satisfies ? sourceVersion : null,
+        latestStable: sourceVersion,
+        latest: sourceVersion,
+        locked: lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+        status: satisfies ? 'latest' : 'error',
+        error: satisfies ? undefined : new Error(`Source version ${sourceVersion} does not satisfy ${dep.versionRaw}`),
+      }
+    }
+
+    // No version requirement, just show the source version
+    return {
+      dependency: dep,
+      resolved: sourceVersion,
+      latestStable: sourceVersion,
+      latest: sourceVersion,
+      locked: undefined,
+      status: 'latest',
+    }
+  } catch (err) {
+    return {
+      dependency: dep,
+      resolved: null,
+      latestStable: undefined,
+      latest: undefined,
+      locked: undefined,
+      error: err instanceof Error ? err : new Error(String(err)),
+      status: 'error',
+    }
+  }
+}
+
+const validateDependency = (
+  dep: Dependency,
+  cargoTomlDir: string,
+  config: ValidatorConfig,
+  lockfile: CargoLockfile | undefined,
+): Promise<DependencyValidationResult> => {
+  if (dep.source.type === 'registry') {
+    return validateRegistryDependency(dep, config, lockfile)
+  }
+  return validateSourceDependency(dep, cargoTomlDir, config, lockfile)
 }
 
 export const validateCargoToml = async (
@@ -216,10 +291,13 @@ export const validateCargoTomlContent = async (
   lockfile?: CargoLockfile,
 ): Promise<ValidationResult> => {
   try {
+    const cargoTomlDir = path.dirname(filePath)
     const toml = parseTOML(content)
     const tables = toml.body[0].body.filter((v): v is TOMLTable => v.type === 'TOMLTable')
     const dependencies = parseCargoDependencies(tables)
-    const results = await Promise.all(dependencies.map((dep) => validateDependency(dep, config, lockfile)))
+    const results = await Promise.all(
+      dependencies.map((dep) => validateDependency(dep, cargoTomlDir, config, lockfile)),
+    )
 
     return { filePath, dependencies: results }
   } catch (err) {
