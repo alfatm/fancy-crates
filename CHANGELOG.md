@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2025-12-02
+
+### Added
+
+- **Cargo.lock support**: Now reads `Cargo.lock` to show the currently locked version alongside the specified requirement and latest available version.
+
+### Changed
+
+- **Exact version comparison**: Full versions like `"1.2.3"` are now compared directly against the latest version instead of being treated as ranges. This means `serde = "1.2.3"` with latest `1.2.4` will show as patch-behind, not latest. Short versions like `"1"` or `"1.2"` still use range semantics.
+
 ## [1.0.0] - 2025-12-02
 
 ### Added
@@ -62,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Support for Cargo's Git index protocol and cache.
-- All actions, commands, and completions. 
+- All actions, commands, and completions.
 - Decorator customizations.
 - Unused dependencies and dead code.
 - Status bar items are temporarily removed.

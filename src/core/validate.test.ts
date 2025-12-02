@@ -2,7 +2,7 @@ import assert from 'node:assert'
 import { describe, test } from 'node:test'
 import semver from 'semver'
 import { parseVersionRange } from './parse'
-import { compareVersionDiff, computeStatus, getMinVersionFromRange } from './validate'
+import { compareVersionDiff, computeStatus, getMinVersionFromRange, isExactVersion } from './validate'
 
 function assertDefined<T>(value: T | null | undefined, msg = 'Expected value to be defined'): T {
   assert.ok(value != null, msg)
@@ -199,6 +199,94 @@ describe('computeStatus', () => {
     const range = assertDefined(parseVersionRange('0.1'))
     const latestStable = assertDefined(semver.parse('0.2.0'))
     assert.strictEqual(computeStatus(range, latestStable, latestStable), 'minor-behind')
+  })
+})
+
+describe('isExactVersion', () => {
+  test('returns true for full version "1.2.3"', () => {
+    assert.strictEqual(isExactVersion('1.2.3'), true)
+  })
+
+  test('returns true for full version "0.1.0"', () => {
+    assert.strictEqual(isExactVersion('0.1.0'), true)
+  })
+
+  test('returns true for full version with prerelease "1.2.3-alpha"', () => {
+    assert.strictEqual(isExactVersion('1.2.3-alpha'), true)
+  })
+
+  test('returns true for full version with build metadata "1.2.3+build"', () => {
+    assert.strictEqual(isExactVersion('1.2.3+build'), true)
+  })
+
+  test('returns false for short version "1"', () => {
+    assert.strictEqual(isExactVersion('1'), false)
+  })
+
+  test('returns false for short version "1.2"', () => {
+    assert.strictEqual(isExactVersion('1.2'), false)
+  })
+
+  test('returns false for caret version "^1.2.3"', () => {
+    assert.strictEqual(isExactVersion('^1.2.3'), false)
+  })
+
+  test('returns false for tilde version "~1.2.3"', () => {
+    assert.strictEqual(isExactVersion('~1.2.3'), false)
+  })
+
+  test('returns false for equality version "=1.2.3"', () => {
+    assert.strictEqual(isExactVersion('=1.2.3'), false)
+  })
+
+  test('returns false for range ">1.0.0"', () => {
+    assert.strictEqual(isExactVersion('>1.0.0'), false)
+  })
+
+  test('returns false for complex requirement "1.2.3, <2.0.0"', () => {
+    assert.strictEqual(isExactVersion('1.2.3, <2.0.0'), false)
+  })
+})
+
+describe('computeStatus with exact versions (versionRaw)', () => {
+  test('returns "patch-behind" for exact "1.2.3" when latest is "1.2.4"', () => {
+    const range = assertDefined(parseVersionRange('1.2.3'))
+    const latest = assertDefined(semver.parse('1.2.4'))
+    // Without versionRaw, 1.2.4 satisfies ^1.2.3 so it would be "latest"
+    // But with exact versionRaw "1.2.3", we compare directly
+    assert.strictEqual(computeStatus(range, latest, latest, '1.2.3'), 'patch-behind')
+  })
+
+  test('returns "minor-behind" for exact "1.2.3" when latest is "1.3.0"', () => {
+    const range = assertDefined(parseVersionRange('1.2.3'))
+    const latest = assertDefined(semver.parse('1.3.0'))
+    assert.strictEqual(computeStatus(range, latest, latest, '1.2.3'), 'minor-behind')
+  })
+
+  test('returns "major-behind" for exact "1.2.3" when latest is "2.0.0"', () => {
+    const range = assertDefined(parseVersionRange('1.2.3'))
+    const latest = assertDefined(semver.parse('2.0.0'))
+    assert.strictEqual(computeStatus(range, latest, latest, '1.2.3'), 'major-behind')
+  })
+
+  test('returns "latest" for exact "1.2.3" when latest is "1.2.3"', () => {
+    const range = assertDefined(parseVersionRange('1.2.3'))
+    const latest = assertDefined(semver.parse('1.2.3'))
+    assert.strictEqual(computeStatus(range, latest, latest, '1.2.3'), 'latest')
+  })
+
+  test('returns "latest" for short "1.2" when latest is "1.2.5" (range behavior)', () => {
+    // Short version should still use range behavior
+    const range = assertDefined(parseVersionRange('1.2'))
+    const latest = assertDefined(semver.parse('1.2.5'))
+    assert.strictEqual(computeStatus(range, latest, latest, '1.2'), 'latest')
+  })
+
+  test('returns "latest" for short "1" when latest is "1.9.0" (range behavior)', () => {
+    // Short version should still use range behavior
+    const range = assertDefined(parseVersionRange('1'))
+    const latest = assertDefined(semver.parse('1.9.0'))
+    assert.strictEqual(computeStatus(range, latest, latest, '1'), 'latest')
   })
 })
 

@@ -11,6 +11,8 @@ export {
   parseRegistryConfig,
 } from './config.js'
 export { fetchVersions } from './fetch.js'
+export type { CargoLockfile, LockedPackage } from './lockfile.js'
+export { findCargoLockPath, getLockedVersion, parseCargoLockfile, readCargoLockfile } from './lockfile.js'
 export type { FormattedDependency } from './format.js'
 export {
   formatDependencyResult,

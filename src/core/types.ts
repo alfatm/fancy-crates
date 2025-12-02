@@ -8,6 +8,8 @@ export interface Dependency {
   name: string
   /** The compatible version range of the dependency. */
   version: semver.Range
+  /** The original version string as specified in Cargo.toml */
+  versionRaw: string
   /** The name of the registry, if explicitly given. */
   registry?: string
   /** The line number of the dependency's version requirement. 0-based. */
@@ -43,6 +45,8 @@ export interface DependencyValidationResult {
   resolved: semver.SemVer | null
   latestStable: semver.SemVer | undefined
   latest: semver.SemVer | undefined
+  /** The version currently locked in Cargo.lock */
+  locked: semver.SemVer | undefined
   error?: Error
   status: DependencyStatus
 }

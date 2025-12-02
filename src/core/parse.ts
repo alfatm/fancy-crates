@@ -75,6 +75,7 @@ export function parseCargoDependencies(body: TOMLTable[]): Dependency[] {
 function parseSingleDependency(crateName: string, body: TOMLKeyValue[]): Dependency | undefined {
   let line: number | undefined
   let version: semver.Range | undefined
+  let versionRaw: string | undefined
   let registry: string | undefined
   let packageName: string | undefined
   for (const node of body) {
@@ -86,6 +87,7 @@ function parseSingleDependency(crateName: string, body: TOMLKeyValue[]): Depende
         const v = parseVersionRange(value.value)
         if (v !== undefined) {
           version = v
+          versionRaw = value.value
           // TOML parser lines are 1-based, but VSCode lines are 0-based
           line = node.loc.end.line - 1
         }
@@ -96,10 +98,11 @@ function parseSingleDependency(crateName: string, body: TOMLKeyValue[]): Depende
       }
     }
   }
-  if (version !== undefined && line !== undefined) {
+  if (version !== undefined && versionRaw !== undefined && line !== undefined) {
     return {
       name: packageName ?? crateName,
       version,
+      versionRaw,
       line,
       registry,
     }
@@ -131,6 +134,7 @@ function parseMultipleDependencies(body: TOMLKeyValue[]): Dependency[] {
           return {
             name: key,
             version,
+            versionRaw: value.value,
             // TOML parser lines are 1-based, but VSCode lines are 0-based
             line: node.loc.end.line - 1,
             registry: undefined,

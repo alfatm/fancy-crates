@@ -6,8 +6,6 @@ src/
 test-workspace/
 out/*.map
 dist/*.map
-dist/cli.cjs
-dist/validate.cjs
 .gitignore
 biome.json
 tsconfig.json

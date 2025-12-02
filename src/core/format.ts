@@ -41,7 +41,7 @@ export interface FormattedDependency {
  * This is used by both VSCode extension and CLI.
  */
 export function formatDependencyResult(result: DependencyValidationResult, docsUrl?: string): FormattedDependency {
-  const { dependency, resolved, latestStable, latest, status, error } = result
+  const { dependency, resolved, latestStable, latest, locked, status, error } = result
   const name = dependency.name
 
   if (status === 'error') {
@@ -78,7 +78,7 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
     decoration = `${symbol} ${targetVersion}`
   }
 
-  const hoverMarkdown = formatHoverMarkdown(resolved, latestStable, latest, name, docsUrl)
+  const hoverMarkdown = formatHoverMarkdown(resolved, latestStable, latest, locked, name, docsUrl)
 
   return { status, decoration, hoverMarkdown }
 }
@@ -90,6 +90,7 @@ function formatHoverMarkdown(
   resolved: semver.SemVer | null,
   latestStable: semver.SemVer | undefined,
   latest: semver.SemVer,
+  locked: semver.SemVer | undefined,
   name: string,
   docsUrl?: string,
 ): string {
@@ -111,7 +112,7 @@ function formatHoverMarkdown(
     formatVersion(resolved, 'Resolved'),
     formatVersion(latestStable ?? null, 'Latest Stable'),
     formatVersion(latest, 'Latest'),
-    '- **Locked**: feature not implemented',
+    formatVersion(locked, 'Locked'),
   ].join('\n')
 }
 

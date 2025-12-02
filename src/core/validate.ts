@@ -5,6 +5,7 @@ import { ParseError, parseTOML } from 'toml-eslint-parser'
 import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
 import { DEFAULT_CONFIG, getRegistry } from './config.js'
 import { fetchVersions } from './fetch.js'
+import { type CargoLockfile, findCargoLockPath, getLockedVersion, readCargoLockfile } from './lockfile.js'
 import { parseCargoDependencies } from './parse.js'
 import type {
   Dependency,
@@ -80,21 +81,43 @@ export const compareVersionDiff = (
 }
 
 /**
+ * Check if a version string represents an exact (full) version like "1.2.3".
+ * Exact versions should be compared as equality, not as ranges.
+ *
+ * Returns true for: "1.2.3", "0.1.0", "10.20.30"
+ * Returns false for: "1", "1.2", "^1.2.3", ">=1.0.0", "~1.2.3", "1.2.3, <2.0.0"
+ */
+export const isExactVersion = (versionRaw: string): boolean => {
+  // Exact version is a plain version with all three components: major.minor.patch
+  // It should not have any operators or multiple requirements
+  const trimmed = versionRaw.trim()
+  // Must start with a digit (no operators like ^, ~, =, >, <)
+  // Must have exactly 3 numeric components separated by dots
+  // May have pre-release or build metadata
+  return /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(trimmed)
+}
+
+/**
  * Compute dependency status based on the version specified in Cargo.toml and available versions.
  *
  * The logic is:
- * 1. If latestStable satisfies the specified range, the dependency is up-to-date ("latest")
- * 2. Otherwise, compare the minimum version from the range against latestStable to determine
+ * 1. For exact versions (like "1.2.3"), compare directly with the latest version
+ * 2. For range versions (like "1", "1.2", "^1.2.3"), check if latestStable satisfies the range
+ * 3. Otherwise, compare the minimum version from the range against latestStable to determine
  *    how far behind the specification is
  *
  * This correctly handles short version formats like "0", "1", "1.0" which represent ranges:
  * - "0" means >=0.0.0 <1.0.0, so if latestStable is 0.5.0, it's still "latest"
  * - "1" means >=1.0.0 <2.0.0, so if latestStable is 1.9.0, it's still "latest"
+ *
+ * But for exact versions like "1.2.3", we compare directly:
+ * - "1.2.3" with latest 1.2.4 means patch-behind (not "latest")
  */
 export const computeStatus = (
   specifiedRange: semver.Range,
   latestStable: semver.SemVer | undefined,
   latest: semver.SemVer | undefined,
+  versionRaw?: string,
 ): DependencyStatus => {
   if (!latest) {
     return 'error'
@@ -102,6 +125,15 @@ export const computeStatus = (
 
   // Compare against latest stable if available, otherwise against latest (which may be prerelease)
   const targetVersion = latestStable ?? latest
+
+  // For exact versions, compare directly instead of using range satisfaction
+  if (versionRaw && isExactVersion(versionRaw)) {
+    const specifiedVersion = getMinVersionFromRange(specifiedRange)
+    if (!specifiedVersion) {
+      return 'error'
+    }
+    return compareVersionDiff(specifiedVersion, targetVersion)
+  }
 
   // If the target version satisfies the specified range, the dependency is up-to-date
   if (specifiedRange.test(targetVersion)) {
@@ -128,7 +160,11 @@ const findResolvedVersion = (versions: semver.SemVer[], range: semver.Range): se
   return matching[0] ?? null
 }
 
-const validateDependency = async (dep: Dependency, config: ValidatorConfig): Promise<DependencyValidationResult> => {
+const validateDependency = async (
+  dep: Dependency,
+  config: ValidatorConfig,
+  lockfile: CargoLockfile | undefined,
+): Promise<DependencyValidationResult> => {
   try {
     const registry = getRegistry(dep.registry, config)
     const versions = await fetchVersions(dep.name, registry, config.useCargoCache, config.fetchOptions)
@@ -137,13 +173,15 @@ const validateDependency = async (dep: Dependency, config: ValidatorConfig): Pro
     const resolved = findResolvedVersion(versions, dep.version)
     const latestStable = versions.find((v) => v.prerelease.length === 0)
     const latest = versions[0]
+    const locked = lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined
 
     return {
       dependency: dep,
       resolved,
       latestStable,
       latest,
-      status: computeStatus(dep.version, latestStable, latest),
+      locked,
+      status: computeStatus(dep.version, latestStable, latest, dep.versionRaw),
     }
   } catch (err) {
     return {
@@ -151,6 +189,7 @@ const validateDependency = async (dep: Dependency, config: ValidatorConfig): Pro
       resolved: null,
       latestStable: undefined,
       latest: undefined,
+      locked: lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
       error: err instanceof Error ? err : new Error(String(err)),
       status: 'error',
     }
@@ -162,19 +201,25 @@ export const validateCargoToml = async (
   config: ValidatorConfig = DEFAULT_CONFIG,
 ): Promise<ValidationResult> => {
   const content = await readFile(filePath, 'utf-8')
-  return validateCargoTomlContent(content, filePath, config)
+
+  // Try to find and load Cargo.lock
+  const lockPath = findCargoLockPath(filePath)
+  const lockfile = lockPath ? readCargoLockfile(lockPath) : undefined
+
+  return validateCargoTomlContent(content, filePath, config, lockfile)
 }
 
 export const validateCargoTomlContent = async (
   content: string,
   filePath: string,
   config: ValidatorConfig = DEFAULT_CONFIG,
+  lockfile?: CargoLockfile,
 ): Promise<ValidationResult> => {
   try {
     const toml = parseTOML(content)
     const tables = toml.body[0].body.filter((v): v is TOMLTable => v.type === 'TOMLTable')
     const dependencies = parseCargoDependencies(tables)
-    const results = await Promise.all(dependencies.map((dep) => validateDependency(dep, config)))
+    const results = await Promise.all(dependencies.map((dep) => validateDependency(dep, config, lockfile)))
 
     return { filePath, dependencies: results }
   } catch (err) {
