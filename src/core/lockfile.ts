@@ -32,23 +32,24 @@ const execFileAsync = promisify(execFile)
 
 /**
  * Find the Cargo.lock file for a given Cargo.toml file.
- * Uses `cargo locate-project` to find the root Cargo.toml, then looks for Cargo.lock next to it.
+ * Uses `cargo metadata` to find the workspace root, then looks for Cargo.lock there.
  */
 export async function findCargoLockPath(cargoTomlPath: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync('cargo', ['locate-project', '--message-format', 'plain'], {
+    const { stdout } = await execFileAsync('cargo', ['metadata', '--format-version', '1', '--no-deps'], {
       cwd: path.dirname(cargoTomlPath),
     })
-    const rootCargoToml = stdout.trim()
-    if (!rootCargoToml) {
+    const metadata = JSON.parse(stdout) as { workspace_root?: string }
+    const workspaceRoot = metadata.workspace_root
+    if (!workspaceRoot) {
       return undefined
     }
-    const lockPath = path.join(path.dirname(rootCargoToml), 'Cargo.lock')
+    const lockPath = path.join(workspaceRoot, 'Cargo.lock')
     if (existsSync(lockPath)) {
       return lockPath
     }
   } catch {
-    // cargo locate-project failed (non-zero exit code, cargo not found, etc.)
+    // cargo metadata failed (non-zero exit code, cargo not found, etc.)
   }
   return undefined
 }
