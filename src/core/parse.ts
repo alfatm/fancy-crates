@@ -147,7 +147,7 @@ function parseMultipleDependencies(body: TOMLKeyValue[]): Dependency[] {
 }
 
 /** Parses Cargo's semver requirement */
-function parseVersionRange(s: string): semver.Range | undefined {
+export function parseVersionRange(s: string): semver.Range | undefined {
   try {
     // Cargo uses comma to separated multiple "and" requirements, but semver uses whitespace
     return new semver.Range(

@@ -1,12 +1,8 @@
 import type { Registry, ValidatorConfig } from './types.js'
 
-/** Default crates.io index URL (sparse protocol) */
+/** Default URLs and cache identifiers */
 export const CRATES_IO_INDEX = new URL('https://index.crates.io/')
-
-/** Default crates.io cache directory name */
 export const CRATES_IO_CACHE = 'index.crates.io-6f17d22bba15001f'
-
-/** Default docs.rs URL */
 export const DOCS_RS_URL = new URL('https://docs.rs/')
 
 export const DEFAULT_CONFIG: ValidatorConfig = {
@@ -14,14 +10,6 @@ export const DEFAULT_CONFIG: ValidatorConfig = {
   cratesIoCache: CRATES_IO_CACHE,
   useCargoCache: true,
   registries: [],
-}
-
-export function safeParseUrl(s: string): URL | Error {
-  try {
-    return new URL(s)
-  } catch (err) {
-    return err as Error
-  }
 }
 
 /** Registry config as stored in settings/cargo config */
@@ -35,33 +23,35 @@ export interface RegistryConfig {
 
 /**
  * Parse a registry config into a Registry object.
- * Shared between extension and CLI.
+ * @throws Error if the registry config is invalid
  */
-export function parseRegistryConfig(registry: RegistryConfig): Registry | Error {
-  const index = safeParseUrl(registry.index)
-  const cache = registry.cache
-  const docs = registry.docs === undefined ? undefined : safeParseUrl(registry.docs)
-  const token = registry.token
-  if (index instanceof Error) {
-    return new Error(`registry ${registry.name} - invalid index URL: ${registry.index}`)
-  } else if (docs instanceof Error) {
-    return new Error(`registry ${registry.name} - invalid docs URL: ${registry.docs}`)
-  } else {
-    return {
-      index,
-      cache,
-      docs,
-      token,
+export const parseRegistryConfig = (registry: RegistryConfig): Registry => {
+  let index: URL
+  let docs: URL | undefined
+
+  try {
+    index = new URL(registry.index)
+  } catch {
+    throw new Error(`registry ${registry.name} - invalid index URL: ${registry.index}`)
+  }
+
+  if (registry.docs) {
+    try {
+      docs = new URL(registry.docs)
+    } catch {
+      throw new Error(`registry ${registry.name} - invalid docs URL: ${registry.docs}`)
     }
   }
+
+  return { index, cache: registry.cache, docs, token: registry.token }
 }
 
 /**
  * Merge registry arrays, where later entries override earlier ones with the same name.
- * Used by both CLI (cargo config + CLI args) and extension (cargo config + VSCode settings).
  */
-export function mergeRegistries(...registrySets: RegistryConfig[][]): RegistryConfig[] {
+export const mergeRegistries = (...registrySets: RegistryConfig[][]): RegistryConfig[] => {
   const merged: RegistryConfig[] = []
+
   for (const registries of registrySets) {
     for (const reg of registries) {
       const existingIndex = merged.findIndex((r) => r.name === reg.name)
@@ -72,32 +62,35 @@ export function mergeRegistries(...registrySets: RegistryConfig[][]): RegistryCo
       }
     }
   }
+
   return merged
 }
 
-export function getRegistry(name: string | undefined, config: ValidatorConfig): Registry | Error {
-  if (name !== undefined) {
+/**
+ * Get registry configuration by name, or default crates.io registry.
+ * @throws Error if registry not found or invalid
+ */
+export const getRegistry = (name: string | undefined, config: ValidatorConfig): Registry => {
+  if (name) {
     const registry = config.registries.find((r) => r.name === name)
-    if (registry !== undefined) {
+    if (registry) {
       return parseRegistryConfig(registry)
-    } else {
-      return new Error(`unknown registry: ${name}`)
     }
+    throw new Error(`unknown registry: ${name}`)
   }
 
-  // Default registry (crates.io) - check for source replacement
+  // Source replacement (crates.io mirror)
   if (config.sourceReplacement) {
-    const index = safeParseUrl(config.sourceReplacement.index)
-    if (index instanceof Error) {
-      return new Error(`source replacement - invalid index URL: ${config.sourceReplacement.index}`)
+    let index: URL
+    try {
+      index = new URL(config.sourceReplacement.index)
+    } catch {
+      throw new Error(`source replacement - invalid index URL: ${config.sourceReplacement.index}`)
     }
-    return {
-      index,
-      token: config.sourceReplacement.token,
-      docs: DOCS_RS_URL,
-    }
+    return { index, token: config.sourceReplacement.token, docs: DOCS_RS_URL }
   }
 
+  // Default: crates.io
   return {
     index: config.cratesIoIndex,
     cache: config.cratesIoCache,

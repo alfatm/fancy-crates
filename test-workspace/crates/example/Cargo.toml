@@ -36,8 +36,9 @@ jpegxl-sys = "0.8.2"
 tracing = "=0.1.37"
 external = { version = "0.1.0", registry = "public-registry" }
 external-unknown = { version = "0.1.0", registry = "unknown-registry" }
-external2 = { registry = "private-registry", version = "0.0.1" }
-external3 = { registry = "private-registry", version = "0.0.2" }
+external-missing = { registry = "private-registry", version = "0.0.1" }
+external2 = { registry = "private-registry", version = "1.1.0" }
+external3 = { registry = "private-registry", version = "1.2.3" }
 
 [dependencies.external4]
 registry = "private-registry"
@@ -115,3 +116,6 @@ percent-encoding = "2.1.0"
 [dependencies.tokio_1]
 package = "tokio"
 version = "1.9.0"
+
+[workspace]
+members = ["crates/external", "crates/external2"]

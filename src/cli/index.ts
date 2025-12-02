@@ -2,16 +2,19 @@
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-
 import { Command } from 'commander'
-
-import type { DependencyValidationResult, RegistryConfig, ValidatorConfig } from '../core/index.js'
+import type { DependencyValidationResult, Logger, RegistryConfig, ValidatorConfig } from '../core/index.js'
 import {
   DEFAULT_CONFIG,
   DOCS_RS_URL,
   formatDependencyResult,
   loadCargoConfig,
   mergeRegistries,
+  SYMBOL_ERROR,
+  SYMBOL_LATEST,
+  SYMBOL_MAJOR_BEHIND,
+  SYMBOL_MINOR_BEHIND,
+  SYMBOL_PATCH_BEHIND,
   validateCargoToml,
 } from '../core/index.js'
 
@@ -50,6 +53,7 @@ interface Options {
   cache: boolean
   json: boolean
   registry: RegistryConfig[]
+  verbose: number
 }
 
 const program = new Command()
@@ -63,11 +67,12 @@ program
   .option('--show-plugin', 'Show output as VSCode plugin would display it', false)
   .option('--no-cache', 'Disable Cargo cache lookup')
   .option('--json', 'Output results as JSON', false)
+  .option('-v, --verbose', 'Verbosity level: -v error, -vv info, -vvv debug', (_, prev) => prev + 1, 0)
   .option(
     '--registry <name=url>',
     'Add alternate registry (format: name=index_url). Overrides registries from cargo config.',
     parseRegistry,
-    []
+    [],
   )
   .addHelpText(
     'after',
@@ -80,7 +85,7 @@ Examples:
   $ sparse-crates-cli ./Cargo.toml --filter external2 --show-plugin
   $ sparse-crates-cli ./Cargo.toml --line 38 --show-plugin
   $ sparse-crates-cli ./Cargo.toml --no-cache
-  $ sparse-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/`
+  $ sparse-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/`,
   )
   .action(main)
 
@@ -95,13 +100,7 @@ async function main(pathArg: string, options: Options) {
 
   // Load cargo config (registries and source replacement)
   const cargoDir = dirname(filePath)
-  const cargoConfigResult = await loadCargoConfig(cargoDir)
-  if (cargoConfigResult instanceof Error) {
-    console.warn(`Warning: ${cargoConfigResult.message}`)
-  }
-
-  // Extract registries and source replacement from cargo config
-  const cargoConfig = cargoConfigResult instanceof Error ? { registries: [] } : cargoConfigResult
+  const cargoConfig = await loadCargoConfig(cargoDir)
 
   // Merge registries: CLI args override cargo config
   const registries = mergeRegistries(cargoConfig.registries, cliRegistries)
@@ -111,11 +110,23 @@ async function main(pathArg: string, options: Options) {
     ? { index: cargoConfig.sourceReplacement.index, token: cargoConfig.sourceReplacement.token }
     : undefined
 
+  const verbosity = options.verbose
+  const noop = () => {
+    /* noop */
+  }
+  const logger: Logger = {
+    debug: verbosity >= 3 ? (msg) => console.log(`[debug] ${msg}`) : noop,
+    info: verbosity >= 2 ? (msg) => console.log(`[info] ${msg}`) : noop,
+    warn: verbosity >= 1 ? (msg) => console.warn(`[warn] ${msg}`) : noop,
+    error: verbosity >= 1 ? (msg) => console.error(`[error] ${msg}`) : noop,
+  }
+
   const config: ValidatorConfig = {
     ...DEFAULT_CONFIG,
     useCargoCache: useCache,
     registries,
     sourceReplacement,
+    fetchOptions: { logger },
   }
 
   // Read file content for line display
@@ -165,27 +176,47 @@ async function main(pathArg: string, options: Options) {
       process.exit(0)
     }
 
-    const outdated = deps.filter((d) => d.status === 'outdated')
+    const latest = deps.filter((d) => d.status === 'latest')
+    const patchBehind = deps.filter((d) => d.status === 'patch-behind')
+    const minorBehind = deps.filter((d) => d.status === 'minor-behind')
+    const majorBehind = deps.filter((d) => d.status === 'major-behind')
     const errors = deps.filter((d) => d.status === 'error')
-    const upToDate = deps.filter((d) => d.status === 'up-to-date')
 
     if (jsonOutput) {
       console.log(JSON.stringify({ ...result, dependencies: deps }, null, 2))
     } else {
       console.log(`Found ${deps.length} dependencies:\n`)
 
-      if (upToDate.length > 0) {
-        console.log(`Up to date (${upToDate.length}):`)
-        for (const r of upToDate) {
+      if (latest.length > 0) {
+        console.log(`${SYMBOL_LATEST} Latest (${latest.length}):`)
+        for (const r of latest) {
           const lineContent = fileLines[r.dependency.line] || ''
           console.log(formatResult(r, lineContent, showPlugin))
         }
         console.log('')
       }
 
-      if (outdated.length > 0) {
-        console.log(`Outdated (${outdated.length}):`)
-        for (const r of outdated) {
+      if (patchBehind.length > 0) {
+        console.log(`${SYMBOL_PATCH_BEHIND} Patch behind (${patchBehind.length}):`)
+        for (const r of patchBehind) {
+          const lineContent = fileLines[r.dependency.line] || ''
+          console.log(formatResult(r, lineContent, showPlugin))
+        }
+        console.log('')
+      }
+
+      if (minorBehind.length > 0) {
+        console.log(`${SYMBOL_MINOR_BEHIND} Minor behind (${minorBehind.length}):`)
+        for (const r of minorBehind) {
+          const lineContent = fileLines[r.dependency.line] || ''
+          console.log(formatResult(r, lineContent, showPlugin))
+        }
+        console.log('')
+      }
+
+      if (majorBehind.length > 0) {
+        console.log(`${SYMBOL_MAJOR_BEHIND} Major behind (${majorBehind.length}):`)
+        for (const r of majorBehind) {
           const lineContent = fileLines[r.dependency.line] || ''
           console.log(formatResult(r, lineContent, showPlugin))
         }
@@ -193,7 +224,7 @@ async function main(pathArg: string, options: Options) {
       }
 
       if (errors.length > 0) {
-        console.log(`Errors (${errors.length}):`)
+        console.log(`${SYMBOL_ERROR} Errors (${errors.length}):`)
         for (const r of errors) {
           const lineContent = fileLines[r.dependency.line] || ''
           console.log(formatResult(r, lineContent, showPlugin))
@@ -202,14 +233,19 @@ async function main(pathArg: string, options: Options) {
       }
 
       console.log('---')
-      console.log(`Summary: ${upToDate.length} up-to-date, ${outdated.length} outdated, ${errors.length} errors`)
+      console.log(
+        `Summary: ${latest.length} latest, ${patchBehind.length} patch, ${minorBehind.length} minor, ${majorBehind.length} major, ${errors.length} errors`,
+      )
     }
 
-    // Exit with error code if there are outdated deps or errors
+    // Exit with error code based on severity
     if (errors.length > 0) {
+      process.exit(3)
+    }
+    if (majorBehind.length > 0) {
       process.exit(2)
     }
-    if (outdated.length > 0) {
+    if (minorBehind.length > 0 || patchBehind.length > 0) {
       process.exit(1)
     }
   } catch (err) {

@@ -2,11 +2,27 @@ import path from 'node:path'
 
 import type semver from 'semver'
 
-import type { DependencyValidationResult } from './types.js'
+import type { DependencyStatus, DependencyValidationResult } from './types.js'
 
-export const SYMBOL_UP_TO_DATE = '✅'
-export const SYMBOL_OUTDATED = '❌'
+// Status symbols with colors:
+// 🟢 latest - green
+// 🟡 patch-behind - yellow (minor issue)
+// 🟠 minor-behind - orange (warning)
+// 🔴 major-behind - red (needs attention)
+// 🔴 error - red
+export const SYMBOL_LATEST = '✅'
+export const SYMBOL_PATCH_BEHIND = '🟡'
+export const SYMBOL_MINOR_BEHIND = '🟠'
+export const SYMBOL_MAJOR_BEHIND = '❌'
 export const SYMBOL_ERROR = '❗❗❗'
+
+const STATUS_SYMBOLS: Record<DependencyStatus, string> = {
+  latest: SYMBOL_LATEST,
+  'patch-behind': SYMBOL_PATCH_BEHIND,
+  'minor-behind': SYMBOL_MINOR_BEHIND,
+  'major-behind': SYMBOL_MAJOR_BEHIND,
+  error: SYMBOL_ERROR,
+}
 
 /**
  * Result of formatting a dependency for display
@@ -47,19 +63,14 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
     }
   }
 
+  const symbol = STATUS_SYMBOLS[status]
+  const targetVersion = latestStable ?? latest
+
   let decoration: string
-  if (resolved.compare(latest) === -1) {
-    // resolved < latest
-    if (latestStable === undefined || latestStable.compare(resolved) === -1) {
-      // latestStable < resolved (prerelease) < latest
-      decoration = `${SYMBOL_OUTDATED} ${latest}`
-    } else if (resolved.compare(latestStable) === 0) {
-      decoration = SYMBOL_UP_TO_DATE
-    } else {
-      decoration = `${SYMBOL_OUTDATED} ${latestStable}`
-    }
+  if (status === 'latest') {
+    decoration = symbol
   } else {
-    decoration = SYMBOL_UP_TO_DATE
+    decoration = `${symbol} ${targetVersion}`
   }
 
   const hoverMarkdown = formatHoverMarkdown(resolved, latestStable, latest, name, docsUrl)

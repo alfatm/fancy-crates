@@ -11,3 +11,5 @@ out
 *.njsproj
 *.sln
 *.sw?
+
+target

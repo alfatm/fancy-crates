@@ -4,23 +4,29 @@ import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AbortError, FetchError, RequestInit } from 'node-fetch'
 import fetch from 'node-fetch'
 import semver from 'semver'
 
 import type { FetchOptions, Logger, Registry } from './types.js'
 
 const DEFAULT_USER_AGENT = 'SparseCrates (https://github.com/citreae535/sparse-crates)'
+const FETCH_TIMEOUT_MS = 30000
+const MAX_SOCKETS = 6
+
+/** Cargo cache format versions (Cargo 0.69 / Rust 1.68.0) */
+const CACHE_FORMAT = {
+  version: 3,
+  indexVersion: 2,
+} as const
 
 const noop = () => {
-  /* intentionally empty */
+  /* noop */
 }
 
-const noopLogger: Logger = {
-  info: noop,
-  warn: noop,
-  error: noop,
-}
+const noopLogger: Logger = { debug: noop, info: noop, warn: noop, error: noop }
+
+const httpAgent = new http.Agent({ maxSockets: MAX_SOCKETS })
+const httpsAgent = new https.Agent({ maxSockets: MAX_SOCKETS })
 
 interface VersionsCache {
   versions: semver.SemVer[]
@@ -28,201 +34,178 @@ interface VersionsCache {
 }
 
 class CrateVersionsCache {
-  private cache: Map<string, VersionsCache>
-  private expiration: number
-
-  constructor() {
-    this.cache = new Map()
-    // 1 hour
-    this.expiration = 3600000
-  }
+  private cache = new Map<string, VersionsCache>()
+  private expiration = 3600000 // 1 hour
 
   set = (key: string, versions: semver.SemVer[]) => {
-    const cache = this.cache.get(key)
-    if (cache !== undefined) {
-      clearTimeout(cache.callbackId)
+    const existing = this.cache.get(key)
+    if (existing) {
+      clearTimeout(existing.callbackId)
     }
+
     this.cache.set(key, {
       versions,
       callbackId: setTimeout(() => this.cache.delete(key), this.expiration),
     })
   }
 
-  get = (key: string) => {
-    return this.cache.get(key)?.versions
-  }
+  get = (key: string) => this.cache.get(key)?.versions
 }
 
-const crateVersionsCache = new CrateVersionsCache()
+const versionsCache = new CrateVersionsCache()
 
 type LocalSource = 'local registry' | 'cache'
 type Source = 'registry' | LocalSource
 
-export async function fetchVersions(
+export const fetchVersions = async (
   name: string,
   registry: Registry,
   useCache: boolean,
   options: FetchOptions = {},
-): Promise<semver.SemVer[] | Error> {
+): Promise<semver.SemVer[]> => {
   const log = options.logger ?? noopLogger
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT
 
-  let versions = crateVersionsCache.get(name)
-  if (versions === undefined) {
-    if (useCache && registry.cache !== undefined) {
-      const v = await fetchLocal(name, resolveCacheDir(registry.cache), 'cache', log)
-      if (!(v instanceof Error)) {
-        crateVersionsCache.set(name, v)
-        versions = v
-      }
-    }
-    if (versions === undefined) {
-      let v: semver.SemVer[] | Error
-      if (registry.index.protocol === 'file:') {
-        v = await fetchLocal(name, fileURLToPath(registry.index), 'local registry', log)
-      } else {
-        v = await fetchRemote(name, registry.index, userAgent, registry.token, log)
-      }
-      if (!(v instanceof Error)) {
-        crateVersionsCache.set(name, v)
-      }
-      return v
+  const cached = versionsCache.get(name)
+  if (cached) {
+    return cached
+  }
+
+  // Try local cache first
+  if (useCache && registry.cache) {
+    try {
+      const versions = await fetchLocal(name, resolveCacheDir(registry.cache), 'cache', log)
+      versionsCache.set(name, versions)
+      return versions
+    } catch {
+      // Cache miss, continue to network
     }
   }
+
+  // Fetch from registry
+  const versions =
+    registry.index.protocol === 'file:'
+      ? await fetchLocal(name, fileURLToPath(registry.index), 'local registry', log)
+      : await fetchRemote(name, registry.index, userAgent, registry.token, log)
+
+  versionsCache.set(name, versions)
   return versions
 }
 
-const httpAgent = new http.Agent({
-  maxSockets: 6,
-})
-
-const httpsAgent = new https.Agent({
-  maxSockets: 6,
-})
-
-async function fetchRemote(
+const fetchRemote = async (
   name: string,
   registry: URL,
   userAgent: string,
   token: string | undefined,
   log: Logger,
-): Promise<semver.SemVer[] | Error> {
+): Promise<semver.SemVer[]> => {
   const url = new URL(path.posix.join(registry.pathname, resolveIndexPath(name)), registry)
   log.info(`${name} - fetching versions from registry: ${url}`)
-  const headers: Record<string, string> = {
-    'User-Agent': userAgent,
-  }
+
+  const headers: Record<string, string> = { 'User-Agent': userAgent }
   if (token) {
     headers.Authorization = token
   }
-  const response = await safeFetch(
-    url,
-    {
-      agent: (url) => {
-        if (url.protocol === 'https:') {
-          return httpsAgent
-        } else {
-          return httpAgent
-        }
-      },
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      agent: (u) => (u.protocol === 'https:' ? httpsAgent : httpAgent),
       headers,
-    },
-    30000,
-  )
-  if (response instanceof Error) {
-    const e = response
-    let message: string
-    if (e.name === 'AbortError') {
-      message = 'connection to registry timeout'
-    } else {
-      message = `registry fetch error: ${e.message}`
+      signal: controller.signal,
+    })
+
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer())
+      return parseIndex(name, buffer, 'registry', log)
     }
+
+    const message =
+      response.status === 404 || response.status === 410 || response.status === 451
+        ? `crate not found in registry: HTTP ${response.status}`
+        : `unexpected response code: HTTP ${response.status}`
+
     log.error(`${name} - ${message}`)
-    return new Error(message)
-  } else if (response.ok) {
-    return parseIndex(name, response.buffer, 'registry', log)
-  } else {
-    let message: string
-    if (response.status === 404 || response.status === 410 || response.status === 451) {
-      message = `crate not found in registry: HTTP ${response.status}`
-    } else {
-      message = `unexpected response code: HTTP ${response.status}`
+    throw new Error(message)
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      const message = 'connection to registry timeout'
+      log.error(`${name} - ${message}`)
+      throw new Error(message)
     }
-    log.error(`${name} - ${message}`)
-    return new Error(message)
+    throw err
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
-async function fetchLocal(
-  name: string,
-  dir: string,
-  source: LocalSource,
-  log: Logger,
-): Promise<semver.SemVer[] | Error> {
-  const p = path.resolve(dir, resolveIndexPath(name))
-  log.info(`${name} - fetching versions from ${source}: ${p}`)
-  const buffer = await safeReadFile(p)
-  if (buffer instanceof Error) {
-    const e = buffer
-    let message: string
-    if (e?.code === 'ENOENT') {
-      message = `crate not found in ${source}`
-    } else {
-      message = `${source} read error: ${e}`
-    }
-    log.error(`${name} - ${message}`)
-    return new Error(message)
-  } else {
+const fetchLocal = async (name: string, dir: string, source: LocalSource, log: Logger): Promise<semver.SemVer[]> => {
+  const filePath = path.resolve(dir, resolveIndexPath(name))
+  log.info(`${name} - fetching versions from ${source}: ${filePath}`)
+
+  try {
+    const buffer = await readFile(filePath)
     return parseIndex(name, buffer, source, log)
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException
+    const message = e.code === 'ENOENT' ? `crate not found in ${source}` : `${source} read error: ${e}`
+    log.error(`${name} - ${message}`)
+    throw new Error(message)
   }
 }
 
-/** The cache file version of Cargo 0.69 / Rust 1.68.0. */
-const CURRENT_CACHE_VERSION = 3
-/** The index format version of Cargo 0.69 / Rust 1.68.0. */
-const INDEX_FORMAT_VERSION = 2
+const parseIndex = (name: string, buffer: Buffer, source: Source, log: Logger): semver.SemVer[] => {
+  const lines = source === 'cache' ? parseCacheBuffer(name, buffer, log) : buffer.toString('utf8').trim().split('\n')
 
-function parseIndex(name: string, buffer: Buffer, source: Source, log: Logger): semver.SemVer[] | Error {
-  let lines: string[]
-  if (source === 'cache') {
-    const cacheVersion = buffer.readUInt8(0)
-    const indexVersion = buffer.readUint32LE(1)
-    if (cacheVersion !== CURRENT_CACHE_VERSION) {
-      const message = `unknown cache version found in cache: ${cacheVersion}`
-      log.warn(`${name} - ${message}`)
-      return new Error(message)
-    } else if (indexVersion !== INDEX_FORMAT_VERSION) {
-      const message = `unknown index version found in cache: ${indexVersion}`
-      log.warn(`${name} - ${message}`)
-      return new Error(message)
-    } else {
-      lines = buffer
-        .toString('utf8', 5)
-        .split('\0')
-        .filter((_, i) => i % 2 === 0 && i !== 0)
-    }
-  } else {
-    lines = buffer.toString('utf8').trim().split('\n')
-  }
   const versions = lines
     .map((line, i) => {
-      const v = parseRelease(line, name)
-      if (v instanceof Error) {
-        log.warn(`${name} - ${source} index line ${i} - ${v.message}`)
+      const result = parseRelease(line, name)
+      if (result instanceof Error) {
+        log.warn(`${name} - ${source} index line ${i} - ${result.message}`)
         return undefined
       }
-      return v
+      return result
     })
     .filter((v): v is semver.SemVer => v !== undefined)
-  const len = versions.length
-  if (len === 0) {
+
+  if (versions.length === 0) {
     const message = `no version found in ${source}`
     log.warn(`${name} - ${message}`)
-    return new Error(message)
-  } else {
-    log.info(`${name} - ${len} versions parsed from ${source}`)
-    return versions
+    throw new Error(message)
   }
+
+  log.info(`${name} - ${versions.length} versions parsed from ${source}`)
+
+  const latest = versions.sort(semver.compareBuild).reverse()[0]
+  if (latest) {
+    log.debug(`${name} - latest version: ${latest}`)
+  }
+
+  return versions
+}
+
+const parseCacheBuffer = (name: string, buffer: Buffer, log: Logger): string[] => {
+  const cacheVersion = buffer.readUInt8(0)
+  const indexVersion = buffer.readUint32LE(1)
+
+  if (cacheVersion !== CACHE_FORMAT.version) {
+    const message = `unknown cache version: ${cacheVersion}`
+    log.warn(`${name} - ${message}`)
+    throw new Error(message)
+  }
+
+  if (indexVersion !== CACHE_FORMAT.indexVersion) {
+    const message = `unknown index version: ${indexVersion}`
+    log.warn(`${name} - ${message}`)
+    throw new Error(message)
+  }
+
+  return buffer
+    .toString('utf8', 5)
+    .split('\0')
+    .filter((_, i) => i % 2 === 0 && i !== 0)
 }
 
 interface Release {
@@ -231,92 +214,51 @@ interface Release {
   yanked?: boolean
 }
 
-function parseRelease(s: string, name: string): semver.SemVer | Error | undefined {
-  const r: Release | Error = safeJsonParse(s)
-  if (r instanceof Error) {
-    return new Error(`invalid JSON: ${r}`)
-  } else {
-    const version = semver.parse(r.vers)
-    if (r.name !== name) {
-      return new Error(`crate name does not match: ${r.name}`)
-    } else if (version === null) {
-      return new Error(`invalid semver: ${r.vers}`)
-    } else if (r.yanked === undefined) {
-      return new Error(`"yanked" key missing`)
-    } else if (r.yanked) {
-      return
-    } else {
-      return version
-    }
-  }
-}
-
-interface HttpResponse {
-  ok: boolean
-  status: number
-  buffer: Buffer
-}
-
-async function safeFetch(
-  url: URL,
-  init: RequestInit,
-  timeout: number,
-): Promise<HttpResponse | AbortError | FetchError> {
-  const controller = new AbortController()
-  init.signal = controller.signal
-  const t = setTimeout(() => controller.abort(), timeout)
+const parseRelease = (s: string, name: string): semver.SemVer | Error | undefined => {
+  let r: Release
   try {
-    const r = await fetch(url, init)
-    return {
-      ok: r.ok,
-      status: r.status,
-      buffer: Buffer.from(await r.arrayBuffer()),
-    }
+    r = JSON.parse(s)
   } catch (err) {
-    return err as AbortError | FetchError
-  } finally {
-    clearTimeout(t)
+    return new Error(`invalid JSON: ${err}`)
   }
+
+  if (r.name !== name) {
+    return new Error(`crate name mismatch: ${r.name}`)
+  }
+  if (r.yanked === undefined) {
+    return new Error(`"yanked" key missing`)
+  }
+  if (r.yanked) {
+    return undefined
+  }
+
+  const version = semver.parse(r.vers)
+  if (!version) {
+    return new Error(`invalid semver: ${r.vers}`)
+  }
+
+  return version
 }
 
-async function safeReadFile(path: string): Promise<Buffer | NodeJS.ErrnoException> {
-  try {
-    return await readFile(path)
-  } catch (err) {
-    return err as NodeJS.ErrnoException
-  }
-}
-
-function safeJsonParse(s: string) {
-  try {
-    return JSON.parse(s)
-  } catch (err) {
-    return err as Error
-  }
-}
-
-function resolveCacheDir(cacheDir: string): string {
-  let cargoHome = process.env.CARGO_HOME
-  if (cargoHome === undefined) {
-    cargoHome = path.resolve(os.homedir(), '.cargo')
-  }
+const resolveCacheDir = (cacheDir: string): string => {
+  const cargoHome = process.env.CARGO_HOME ?? path.resolve(os.homedir(), '.cargo')
   return path.resolve(cargoHome, 'registry/index', cacheDir, '.cache')
 }
 
-/**
- * https://docs.rs/cargo/latest/cargo/sources/registry/index.html#the-format-of-the-index
- */
-function resolveIndexPath(name: string): string {
-  switch (name.length) {
-    case 0:
-      return ''
-    case 1:
-      return `1/${name}`
-    case 2:
-      return `2/${name}`
-    case 3:
-      return `3/${name.charAt(0)}/${name}`
-    default:
-      return `${name.substring(0, 2)}/${name.substring(2, 4)}/${name}`
+/** https://docs.rs/cargo/latest/cargo/sources/registry/index.html#the-format-of-the-index */
+const resolveIndexPath = (name: string): string => {
+  const len = name.length
+  if (len === 0) {
+    return ''
   }
+  if (len === 1) {
+    return `1/${name}`
+  }
+  if (len === 2) {
+    return `2/${name}`
+  }
+  if (len === 3) {
+    return `3/${name.charAt(0)}/${name}`
+  }
+  return `${name.substring(0, 2)}/${name.substring(2, 4)}/${name}`
 }

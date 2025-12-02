@@ -39,18 +39,13 @@ export async function loadConfigForScope(scope: ConfigurationScope): Promise<voi
   }
 
   const result = await loadCargoConfig(cwd)
-  if (result instanceof Error) {
-    log.warn(`Failed to load cargo config: ${result.message}`)
-    cargoConfigCache.set(cwd, { registries: [] })
-  } else {
-    log.info(
-      `Loaded ${result.registries.length} registries from cargo config: ${result.registries.map((r) => r.name).join(', ')}`,
-    )
-    if (result.sourceReplacement) {
-      log.info(`Source replacement: ${result.sourceReplacement.source} -> ${result.sourceReplacement.replaceWith}`)
-    }
-    cargoConfigCache.set(cwd, result)
+  log.info(
+    `Loaded ${result.registries.length} registries from cargo config: ${result.registries.map((r) => r.name).join(', ')}`,
+  )
+  if (result.sourceReplacement) {
+    log.info(`Source replacement: ${result.sourceReplacement.source} -> ${result.sourceReplacement.replaceWith}`)
   }
+  cargoConfigCache.set(cwd, result)
 }
 
 /**

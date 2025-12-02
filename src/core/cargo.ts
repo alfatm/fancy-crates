@@ -3,9 +3,8 @@ import { promisify } from 'node:util'
 
 const execAsync = promisify(exec)
 
-/**
- * Registry configuration from cargo config
- */
+const CARGO_TIMEOUT_MS = 10000
+
 export interface CargoRegistry {
   name: string
   index: string
@@ -14,9 +13,6 @@ export interface CargoRegistry {
   token?: string
 }
 
-/**
- * Source replacement configuration (e.g., crates.io mirror)
- */
 export interface CargoSourceReplacement {
   /** The source being replaced (e.g., "crates-io") */
   source: string
@@ -28,39 +24,17 @@ export interface CargoSourceReplacement {
   token?: string
 }
 
-/**
- * Combined cargo config result
- */
 export interface CargoConfig {
   registries: CargoRegistry[]
   sourceReplacement?: CargoSourceReplacement
 }
 
-/**
- * Raw cargo config registries format
- */
 interface CargoConfigRegistries {
-  registries?: Record<
-    string,
-    {
-      index?: string
-      token?: string
-      'credential-provider'?: string[]
-    }
-  >
+  registries?: Record<string, { index?: string; token?: string }>
 }
 
-/**
- * Raw cargo config source format
- */
 interface CargoConfigSource {
-  source?: Record<
-    string,
-    {
-      'replace-with'?: string
-      registry?: string
-    }
-  >
+  source?: Record<string, { 'replace-with'?: string; registry?: string }>
 }
 
 /**
@@ -69,34 +43,20 @@ interface CargoConfigSource {
  * Executes: cargo config get source --format json
  *
  * @param cwd Working directory to run cargo config from (affects which .cargo/config.toml is used)
- * @returns CargoConfig or Error
+ * @throws Error if cargo config cannot be loaded
  */
-export async function loadCargoConfig(cwd?: string): Promise<CargoConfig | Error> {
-  try {
-    // Load registries and source config in parallel
-    const [registriesResult, sourceResult] = await Promise.all([loadRegistriesConfig(cwd), loadSourceConfig(cwd)])
-
-    const registries = registriesResult instanceof Error ? [] : registriesResult
-    const sourceReplacement = sourceResult instanceof Error ? undefined : sourceResult
-
-    return {
-      registries,
-      sourceReplacement,
-    }
-  } catch (err) {
-    const error = err as Error
-    return new Error(`Failed to load cargo config: ${error.message}`)
-  }
+export const loadCargoConfig = async (cwd?: string): Promise<CargoConfig> => {
+  const [registries, sourceReplacement] = await Promise.all([loadRegistriesConfig(cwd), loadSourceConfig(cwd)])
+  return { registries, sourceReplacement }
 }
 
-async function loadRegistriesConfig(cwd?: string): Promise<CargoRegistry[] | Error> {
+const loadRegistriesConfig = async (cwd?: string): Promise<CargoRegistry[]> => {
   try {
     const { stdout } = await execAsync('cargo config get registries --format json', {
       cwd,
-      timeout: 10000,
+      timeout: CARGO_TIMEOUT_MS,
     })
 
-    // cargo outputs notes to stderr, we only need stdout
     const jsonLine = stdout.trim().split('\n')[0]
     if (!jsonLine) {
       return []
@@ -107,40 +67,23 @@ async function loadRegistriesConfig(cwd?: string): Promise<CargoRegistry[] | Err
       return []
     }
 
-    const registries: CargoRegistry[] = []
-    for (const [name, registry] of Object.entries(config.registries)) {
-      if (registry.index) {
-        // Remove sparse+ prefix if present
-        let index = registry.index
-        if (index.startsWith('sparse+')) {
-          index = index.slice(7)
-        }
-
-        // Get token from config or environment variable
-        // Environment variable format: CARGO_REGISTRIES_<NAME>_TOKEN (name in uppercase with - replaced by _)
-        const envVarName = `CARGO_REGISTRIES_${name.toUpperCase().replace(/-/g, '_')}_TOKEN`
-        const token = registry.token ?? process.env[envVarName]
-
-        registries.push({
-          name,
-          index,
-          token,
-        })
-      }
-    }
-
-    return registries
-  } catch (err) {
-    const error = err as Error & { code?: string; stderr?: string }
-    return new Error(`Failed to load cargo registries: ${error.message}`)
+    return Object.entries(config.registries)
+      .filter((entry): entry is [string, { index: string; token?: string }] => Boolean(entry[1].index))
+      .map(([name, reg]) => {
+        const index = stripSparsePrefix(reg.index)
+        const envToken = `CARGO_REGISTRIES_${name.toUpperCase().replace(/-/g, '_')}_TOKEN`
+        return { name, index, token: reg.token ?? process.env[envToken] }
+      })
+  } catch {
+    return []
   }
 }
 
-async function loadSourceConfig(cwd?: string): Promise<CargoSourceReplacement | undefined | Error> {
+const loadSourceConfig = async (cwd?: string): Promise<CargoSourceReplacement | undefined> => {
   try {
     const { stdout } = await execAsync('cargo config get source --format json', {
       cwd,
-      timeout: 10000,
+      timeout: CARGO_TIMEOUT_MS,
     })
 
     const jsonLine = stdout.trim().split('\n')[0]
@@ -149,40 +92,29 @@ async function loadSourceConfig(cwd?: string): Promise<CargoSourceReplacement | 
     }
 
     const config: CargoConfigSource = JSON.parse(jsonLine)
-    if (!config.source) {
+    const cratesIo = config.source?.['crates-io']
+    const replaceWith = cratesIo?.['replace-with']
+    if (!replaceWith) {
       return undefined
     }
 
-    // Look for crates-io replacement
-    const cratesIo = config.source['crates-io']
-    if (!cratesIo?.['replace-with']) {
-      return undefined
-    }
-
-    const replaceWith = cratesIo['replace-with']
-    const replacement = config.source[replaceWith]
+    const replacement = config.source?.[replaceWith]
     if (!replacement?.registry) {
       return undefined
     }
 
-    // Remove sparse+ prefix if present
-    let index = replacement.registry
-    if (index.startsWith('sparse+')) {
-      index = index.slice(7)
-    }
-
-    // Get token from environment variable
-    const envVarName = `CARGO_REGISTRIES_${replaceWith.toUpperCase().replace(/-/g, '_')}_TOKEN`
-    const token = process.env[envVarName]
+    const index = stripSparsePrefix(replacement.registry)
+    const envToken = `CARGO_REGISTRIES_${replaceWith.toUpperCase().replace(/-/g, '_')}_TOKEN`
 
     return {
       source: 'crates-io',
       replaceWith,
       index,
-      token,
+      token: process.env[envToken],
     }
   } catch {
-    // Source config is optional, don't treat as error
     return undefined
   }
 }
+
+const stripSparsePrefix = (url: string): string => (url.startsWith('sparse+') ? url.slice(7) : url)

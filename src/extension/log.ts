@@ -9,6 +9,10 @@ function getChannel(): ReturnType<typeof window.createOutputChannel> {
   return outputChannel
 }
 
+function debug(msg: string) {
+  getChannel().appendLine(`${new Date().toISOString()} [debug] ${msg}`)
+}
+
 function info(msg: string) {
   getChannel().appendLine(`${new Date().toISOString()} [info] ${msg}`)
 }
@@ -27,6 +31,7 @@ function dispose() {
 }
 
 export default {
+  debug,
   info,
   warn,
   error,

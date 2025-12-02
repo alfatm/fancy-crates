@@ -9,14 +9,22 @@ export {
   getRegistry,
   mergeRegistries,
   parseRegistryConfig,
-  safeParseUrl,
 } from './config.js'
 export { fetchVersions } from './fetch.js'
 export type { FormattedDependency } from './format.js'
-export { formatDependencyResult, formatDocsLink, SYMBOL_ERROR, SYMBOL_OUTDATED, SYMBOL_UP_TO_DATE } from './format.js'
+export {
+  formatDependencyResult,
+  formatDocsLink,
+  SYMBOL_ERROR,
+  SYMBOL_LATEST,
+  SYMBOL_MAJOR_BEHIND,
+  SYMBOL_MINOR_BEHIND,
+  SYMBOL_PATCH_BEHIND,
+} from './format.js'
 export { parseCargoDependencies } from './parse.js'
 export type {
   Dependency,
+  DependencyStatus,
   DependencyValidationResult,
   FetchOptions,
   Logger,
@@ -24,4 +32,4 @@ export type {
   ValidationResult,
   ValidatorConfig,
 } from './types.js'
-export { safeParseToml, validateCargoToml, validateCargoTomlContent } from './validate.js'
+export { validateCargoToml, validateCargoTomlContent } from './validate.js'

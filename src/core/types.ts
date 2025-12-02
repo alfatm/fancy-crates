@@ -26,6 +26,16 @@ export interface Registry {
 }
 
 /**
+ * Dependency status indicating how far behind the latest version
+ * - latest: Using the latest version
+ * - patch-behind: New patch available (1.2.3 → 1.2.4)
+ * - minor-behind: New minor available (1.2.3 → 1.3.0)
+ * - major-behind: New major available (1.2.3 → 2.0.0)
+ * - error: Could not determine version
+ */
+export type DependencyStatus = 'latest' | 'patch-behind' | 'minor-behind' | 'major-behind' | 'error'
+
+/**
  * Result of validating a single dependency
  */
 export interface DependencyValidationResult {
@@ -34,7 +44,7 @@ export interface DependencyValidationResult {
   latestStable: semver.SemVer | undefined
   latest: semver.SemVer | undefined
   error?: Error
-  status: 'up-to-date' | 'outdated' | 'error'
+  status: DependencyStatus
 }
 
 /**
@@ -77,6 +87,7 @@ export interface ValidatorConfig {
  * Logger interface for fetch operations
  */
 export interface Logger {
+  debug(msg: string): void
   info(msg: string): void
   warn(msg: string): void
   error(msg: string): void
