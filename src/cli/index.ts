@@ -59,7 +59,7 @@ interface Options {
 const program = new Command()
 
 program
-  .name('sparse-crates-cli')
+  .name('elder-crates-cli')
   .description('Validate Cargo.toml dependencies and check for updates')
   .argument('<path>', 'Path to Cargo.toml file')
   .option('--filter <name>', 'Filter by dependency name (can be partial match)')
@@ -81,11 +81,11 @@ Registries are automatically loaded from cargo config (cargo config get registri
 Use --registry to override or add additional registries.
 
 Examples:
-  $ sparse-crates-cli ./Cargo.toml
-  $ sparse-crates-cli ./Cargo.toml --filter external2 --show-plugin
-  $ sparse-crates-cli ./Cargo.toml --line 38 --show-plugin
-  $ sparse-crates-cli ./Cargo.toml --no-cache
-  $ sparse-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/`,
+  $ elder-crates-cli ./Cargo.toml
+  $ elder-crates-cli ./Cargo.toml --filter external2 --show-plugin
+  $ elder-crates-cli ./Cargo.toml --line 38 --show-plugin
+  $ elder-crates-cli ./Cargo.toml --no-cache
+  $ elder-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/`,
   )
   .action(main)
 

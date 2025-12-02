@@ -1,10 +1,10 @@
-# Sparse Crates
+# Elder Crates
 
 A VSCode extension and CLI tool helping Rust developers spot outdated dependencies in `Cargo.toml` manifest files.
 
-This is a fork of [**sparse-crates**](https://github.com/citreae535/sparse-crates) by [citreae535](https://github.com/citreae535), which itself was a fork of [**crates**](https://github.com/serayuzgur/crates) by [Seray Uzgur](https://github.com/serayuzgur).
+This is a fork of [**elder-crates**](https://github.com/citreae535/elder-crates) by [citreae535](https://github.com/citreae535), which itself was a fork of [**crates**](https://github.com/serayuzgur/crates) by [Seray Uzgur](https://github.com/serayuzgur).
 
-![Sparse Crates in Action](https://github.com/alfatm/sparse-crates/raw/main/sparse_crates_in_action.png)
+![Elder Crates in Action](https://github.com/alfatm/elder-crates/raw/main/elder_crates_in_action.png)
 
 ## Features
 
@@ -33,7 +33,7 @@ node dist/cli.cjs ./Cargo.toml
 ### Usage
 
 ```bash
-sparse-crates-cli <path-to-Cargo.toml> [options]
+elder-crates-cli <path-to-Cargo.toml> [options]
 
 Options:
   --filter <name>        Filter by dependency name (partial match)
@@ -49,16 +49,16 @@ Options:
 
 ```bash
 # Check all dependencies
-sparse-crates-cli ./Cargo.toml
+elder-crates-cli ./Cargo.toml
 
 # Filter by name
-sparse-crates-cli ./Cargo.toml --filter serde
+elder-crates-cli ./Cargo.toml --filter serde
 
 # JSON output for scripting
-sparse-crates-cli ./Cargo.toml --json
+elder-crates-cli ./Cargo.toml --json
 
 # Use custom registry
-sparse-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example.com/api/v1/crates/
+elder-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example.com/api/v1/crates/
 ```
 
 ### Exit Codes
@@ -72,13 +72,13 @@ sparse-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.exampl
 
 ## VSCode Extension Configuration
 
-- `sparse-crates.useCargoCache`: If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format.
+- `elder-crates.useCargoCache`: If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format.
 
-- `sparse-crates.cratesIoIndex`: The index URL of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk.
+- `elder-crates.cratesIoIndex`: The index URL of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk.
 
-- `sparse-crates.cratesIoCache`: The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index.
+- `elder-crates.cratesIoCache`: The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index.
 
-- `sparse-crates.registries`: An array of alternate registries:
+- `elder-crates.registries`: An array of alternate registries:
 ```json
 {
     "name": "(Required) Registry name matching dependencies' \"registry\" key",
@@ -95,5 +95,5 @@ sparse-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.exampl
 
 ## Thanks
 
-- [citreae535](https://github.com/citreae535), the original author of [**sparse-crates**](https://github.com/citreae535/sparse-crates)
+- [citreae535](https://github.com/citreae535), the original author of [**elder-crates**](https://github.com/citreae535/elder-crates)
 - [Seray Uzgur](https://github.com/serayuzgur), the original author of [**crates**](https://github.com/serayuzgur/crates)

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2025-12-02
+
+### Added
+
+- **CLI tool**: New standalone command-line interface for validating `Cargo.toml` files outside of VSCode.
+  - Supports `--filter` to show only specific statuses (latest, patch, minor, major, error).
+  - Supports `--registry` for alternate registries via command line.
+  - Supports `--show-hover` for detailed version information.
+  - Supports `--show-plugin` for debug output of plugin configurations.
+- **Granular dependency status**: Replaced binary outdated/up-to-date with more precise indicators:
+  - `✓` - Using the latest version
+  - `↑` - Patch update available (1.2.3 → 1.2.4)
+  - `⇡` - Minor update available (1.2.3 → 1.3.0)
+  - `⇧` - Major update available (1.2.3 → 2.0.0)
+  - `✗` - Error fetching version info
+- **Verbose logging**: Added `-v` flag with multiple verbosity levels (error/info/debug).
+- **Logger interface**: Configurable logging for both extension and CLI.
+- **Test workspace**: Added example crates for testing alternate registries and various configurations.
+- **CODE_STYLE.md**: Documented project coding conventions.
+
+### Changed
+
+- **Modular architecture**: Split codebase into three modules:
+  - `core/` - Shared validation logic, parsing, and registry fetching
+  - `extension/` - VSCode extension code
+  - `cli/` - Command-line interface
+- **Linter migration**: Replaced Rome with Biome for linting and formatting.
+- **Build system**: Migrated from esbuild to Vite for bundling.
+- **HTTP client**: Replaced node-fetch with undici for better performance.
+- **Cargo config support**: Now reads `.cargo/config.toml` for registry configurations.
+
 ## [0.1.0] - 2023-03-23
 
 ### Added

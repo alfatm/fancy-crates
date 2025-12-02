@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "sparse-crates",
+  "name": "elder-crates",
   "version": "1.0.0",
   "author": {
     "name": "alfatm"
@@ -16,17 +16,17 @@
     }
   ],
   "publisher": "alfatm",
-  "homepage": "https://github.com/alfatm/sparse-crates",
+  "homepage": "https://github.com/alfatm/elder-crates",
   "repository": {
     "type": "github",
-    "url": "https://github.com/alfatm/sparse-crates.git"
+    "url": "https://github.com/alfatm/elder-crates.git"
   },
   "engines": {
     "vscode": "^1.72.0",
     "node": ">=16"
   },
   "license": "MIT",
-  "displayName": "Sparse Crates",
+  "displayName": "Elder Crates",
   "description": "Helps Rust developers spot outdated dependencies in `Cargo.toml` manifest files. Supports crates.io, alternate registries, and crates.io mirrors that offers the sparse protocol.",
   "categories": [
     "Programming Languages"
@@ -43,33 +43,33 @@
   "contributes": {
     "commands": [
       {
-        "command": "sparse-crates.refresh",
-        "title": "Sparse Crates: Refresh Dependencies"
+        "command": "elder-crates.refresh",
+        "title": "Elder Crates: Refresh Dependencies"
       }
     ],
     "configuration": {
-      "title": "Sparse Crates",
+      "title": "Elder Crates",
       "properties": {
-        "sparse-crates.useCargoCache": {
+        "elder-crates.useCargoCache": {
           "type": "boolean",
           "scope": "resource",
           "default": true,
           "description": "If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format."
         },
-        "sparse-crates.cratesIoIndex": {
+        "elder-crates.cratesIoIndex": {
           "type": "string",
           "scope": "resource",
           "format": "uri",
           "default": "https://index.crates.io/",
           "description": "The index URL of the default crates.io registry. Change this value only if you use a mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk."
         },
-        "sparse-crates.cratesIoCache": {
+        "elder-crates.cratesIoCache": {
           "type": "string",
           "scope": "resource",
           "default": "index.crates.io-6f17d22bba15001f",
           "markdownDescription": "The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index."
         },
-        "sparse-crates.registries": {
+        "elder-crates.registries": {
           "type": "array",
           "scope": "resource",
           "items": {

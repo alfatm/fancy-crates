@@ -11,10 +11,10 @@ const decoratedEditors = new Set<TextEditor>()
 const pendingDecorations = new Map<string, AbortController>()
 
 export function activate(context: ExtensionContext) {
-  log.info('Sparse Crates activated')
+  log.info('Elder Crates activated')
 
   // Register command to manually refresh decorations
-  const refreshCommand = commands.registerCommand('sparse-crates.refresh', () => {
+  const refreshCommand = commands.registerCommand('elder-crates.refresh', () => {
     refreshAllCargoToml()
   })
 
@@ -49,7 +49,7 @@ export function activate(context: ExtensionContext) {
 
   // Listen for configuration changes
   const configListener = workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration('sparse-crates')) {
+    if (e.affectsConfiguration('elder-crates')) {
       log.info('Configuration changed, refreshing decorations')
       clearCargoConfigCache()
       refreshAllCargoToml()
@@ -106,7 +106,7 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
     await window.withProgress(
       {
         location: ProgressLocation.Window,
-        title: 'Sparse Crates: Checking dependencies...',
+        title: 'Elder Crates: Checking dependencies...',
       },
       async () => {
         if (controller.signal.aborted) {
@@ -119,7 +119,7 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
     if (!controller.signal.aborted) {
       const message = err instanceof Error ? err.message : String(err)
       log.error(`Failed to decorate ${fileName}: ${message}`)
-      window.showErrorMessage(`Sparse Crates: Failed to check dependencies. See output for details.`)
+      window.showErrorMessage(`Elder Crates: Failed to check dependencies. See output for details.`)
     }
   } finally {
     pendingDecorations.delete(fileName)
