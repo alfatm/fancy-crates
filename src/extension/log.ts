@@ -4,7 +4,7 @@ let outputChannel: ReturnType<typeof window.createOutputChannel> | undefined
 
 function getChannel(): ReturnType<typeof window.createOutputChannel> {
   if (!outputChannel) {
-    outputChannel = window.createOutputChannel('Elder Crates', 'log')
+    outputChannel = window.createOutputChannel('Fancy Crates', 'log')
   }
   return outputChannel
 }

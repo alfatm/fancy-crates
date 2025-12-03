@@ -7,7 +7,7 @@ import { Agent, fetch } from 'undici'
 
 import type { FetchOptions, Logger, Registry } from './types.js'
 
-const DEFAULT_USER_AGENT = 'ElderCrates (https://github.com/alfatm/elder-crates)'
+const DEFAULT_USER_AGENT = 'FancyCrates (https://github.com/alfatm/fancy-crates)'
 const FETCH_TIMEOUT_MS = 30000
 const MAX_SOCKETS = 6
 

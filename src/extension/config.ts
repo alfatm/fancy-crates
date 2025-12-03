@@ -10,7 +10,7 @@ import log from './log.js'
 
 /** User agent for VSCode extension requests */
 export const VSCODE_USER_AGENT =
-  'VSCode.ElderCrates (https://marketplace.visualstudio.com/items?itemName=alfatm.elder-crates)'
+  'VSCode.FancyCrates (https://marketplace.visualstudio.com/items?itemName=alfatm.fancy-crates)'
 
 // Cache for cargo config per file directory
 const cargoConfigCache = new Map<string, CargoConfig>()
@@ -64,7 +64,7 @@ function getCargoConfig(scope: ConfigurationScope): CargoConfig {
  */
 export function buildValidatorConfig(scope: ConfigurationScope): ValidatorConfig {
   const cargoConfig = getCargoConfig(scope)
-  const vscodeConfig = workspace.getConfiguration('elder-crates', scope)
+  const vscodeConfig = workspace.getConfiguration('fancy-crates', scope)
 
   // Get VSCode settings registries
   const settingsRegistries: RegistryConfig[] = vscodeConfig.get('registries') ?? []
@@ -97,12 +97,12 @@ export function buildValidatorConfig(scope: ConfigurationScope): ValidatorConfig
 
 function getCrateIoIndex(scope: ConfigurationScope): URL {
   try {
-    return new URL(workspace.getConfiguration('elder-crates', scope).get('cratesIoIndex') as string)
+    return new URL(workspace.getConfiguration('fancy-crates', scope).get('cratesIoIndex') as string)
   } catch {
     return CRATES_IO_INDEX
   }
 }
 
 function getCrateIoCache(scope: ConfigurationScope): string {
-  return workspace.getConfiguration('elder-crates', scope).get('cratesIoCache') ?? CRATES_IO_CACHE
+  return workspace.getConfiguration('fancy-crates', scope).get('cratesIoCache') ?? CRATES_IO_CACHE
 }

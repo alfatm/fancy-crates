@@ -12,15 +12,15 @@ const decoratedEditors = new Set<TextEditor>()
 const pendingDecorations = new Map<string, AbortController>()
 
 export function activate(context: ExtensionContext) {
-  log.info('Elder Crates activated')
+  log.info('Fancy Crates activated')
 
   // Register command to manually refresh decorations
-  const refreshCommand = commands.registerCommand('elder-crates.refresh', () => {
+  const refreshCommand = commands.registerCommand('fancy-crates.refresh', () => {
     refreshAllCargoToml()
   })
 
   // Register command to reload current file with full cache clear
-  const reloadCommand = commands.registerCommand('elder-crates.reload', () => {
+  const reloadCommand = commands.registerCommand('fancy-crates.reload', () => {
     reloadCurrentFile()
   })
 
@@ -55,7 +55,7 @@ export function activate(context: ExtensionContext) {
 
   // Listen for configuration changes
   const configListener = workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration('elder-crates')) {
+    if (e.affectsConfiguration('fancy-crates')) {
       log.info('Configuration changed, refreshing decorations')
       clearCargoConfigCache()
       refreshAllCargoToml()
@@ -112,7 +112,7 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
     await window.withProgress(
       {
         location: ProgressLocation.Window,
-        title: 'Elder Crates: Checking dependencies...',
+        title: 'Fancy Crates: Checking dependencies...',
       },
       async () => {
         if (controller.signal.aborted) {
@@ -125,7 +125,7 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
     if (!controller.signal.aborted) {
       const message = err instanceof Error ? err.message : String(err)
       log.error(`Failed to decorate ${fileName}: ${message}`)
-      window.showErrorMessage(`Elder Crates: Failed to check dependencies. See output for details.`)
+      window.showErrorMessage(`Fancy Crates: Failed to check dependencies. See output for details.`)
     }
   } finally {
     pendingDecorations.delete(fileName)

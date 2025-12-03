@@ -68,7 +68,7 @@ interface Options {
 const program = new Command()
 
 program
-  .name('elder-crates-cli')
+  .name('fancy-crates-cli')
   .description('Validate Cargo.toml dependencies and check for updates')
   .argument('<path>', 'Path to Cargo.toml file')
   .option('--filter <name>', 'Filter by dependency name (can be partial match)')
@@ -100,12 +100,12 @@ Git dependency options:
   --experimental-shallow-clone   Enable shallow clone method (experimental, requires git)
 
 Examples:
-  $ elder-crates-cli ./Cargo.toml
-  $ elder-crates-cli ./Cargo.toml --filter external2 --show-plugin
-  $ elder-crates-cli ./Cargo.toml --line 38 --show-plugin
-  $ elder-crates-cli ./Cargo.toml --no-cache
-  $ elder-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/
-  $ elder-crates-cli ./Cargo.toml --git-archive --experimental-shallow-clone`,
+  $ fancy-crates-cli ./Cargo.toml
+  $ fancy-crates-cli ./Cargo.toml --filter external2 --show-plugin
+  $ fancy-crates-cli ./Cargo.toml --line 38 --show-plugin
+  $ fancy-crates-cli ./Cargo.toml --no-cache
+  $ fancy-crates-cli ./Cargo.toml --registry public-registry=http://localhost:8000/api/v1/crates/
+  $ fancy-crates-cli ./Cargo.toml --git-archive --experimental-shallow-clone`,
   )
   .action(main)
 

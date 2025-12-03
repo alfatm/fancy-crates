@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "elder-crates",
+  "name": "fancy-crates",
   "version": "1.2.6",
   "author": {
     "name": "alfatm"
@@ -16,17 +16,17 @@
     }
   ],
   "publisher": "alfatm",
-  "homepage": "https://github.com/alfatm/elder-crates",
+  "homepage": "https://github.com/alfatm/fancy-crates",
   "repository": {
     "type": "github",
-    "url": "https://github.com/alfatm/elder-crates.git"
+    "url": "https://github.com/alfatm/fancy-crates.git"
   },
   "engines": {
     "vscode": "^1.72.0",
     "node": ">=16"
   },
   "license": "MIT",
-  "displayName": "Elder Crates",
+  "displayName": "Fancy Crates",
   "icon": "fancy-crates-logo.png",
   "description": "Helps Rust developers spot outdated dependencies in `Cargo.toml` manifest files. Supports crates.io, alternate registries, and crates.io mirrors that offers the sparse protocol.",
   "categories": [
@@ -51,37 +51,37 @@
   "contributes": {
     "commands": [
       {
-        "command": "elder-crates.refresh",
-        "title": "Elder Crates: Refresh Dependencies"
+        "command": "fancy-crates.refresh",
+        "title": "Fancy Crates: Refresh Dependencies"
       },
       {
-        "command": "elder-crates.reload",
-        "title": "Elder Crates: Reload (Clear Cache)"
+        "command": "fancy-crates.reload",
+        "title": "Fancy Crates: Reload (Clear Cache)"
       }
     ],
     "configuration": {
-      "title": "Elder Crates",
+      "title": "Fancy Crates",
       "properties": {
-        "elder-crates.useCargoCache": {
+        "fancy-crates.useCargoCache": {
           "type": "boolean",
           "scope": "resource",
           "default": true,
           "description": "If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format."
         },
-        "elder-crates.cratesIoIndex": {
+        "fancy-crates.cratesIoIndex": {
           "type": "string",
           "scope": "resource",
           "format": "uri",
           "default": "https://index.crates.io/",
           "description": "The index URL of the default crates.io registry. Change this value only if you use a mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk."
         },
-        "elder-crates.cratesIoCache": {
+        "fancy-crates.cratesIoCache": {
           "type": "string",
           "scope": "resource",
           "default": "index.crates.io-6f17d22bba15001f",
           "markdownDescription": "The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index."
         },
-        "elder-crates.registries": {
+        "fancy-crates.registries": {
           "type": "array",
           "scope": "resource",
           "items": {
@@ -114,13 +114,13 @@
           "default": [],
           "description": "A list of alternate registries. The index of an alternate registry must support the sparse protocol."
         },
-        "elder-crates.gitArchive": {
+        "fancy-crates.gitArchive": {
           "type": "boolean",
           "scope": "resource",
           "default": true,
           "markdownDescription": "Enable `git archive` method for fetching versions from git dependencies. Requires `git`, `sh`, and `tar` to be available on PATH. Only works with git servers that support `git archive --remote`."
         },
-        "elder-crates.experimentalShallowClone": {
+        "fancy-crates.experimentalShallowClone": {
           "type": "boolean",
           "scope": "resource",
           "default": false,

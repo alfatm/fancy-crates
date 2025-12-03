@@ -313,7 +313,7 @@ async function tryShallowClone(
 
   try {
     // Create temp directory
-    tempDir = await mkdtemp(path.join(tmpdir(), 'elder-crates-git-'))
+    tempDir = await mkdtemp(path.join(tmpdir(), 'fancy-crates-git-'))
     options?.logger?.debug(`Created temp dir: ${tempDir}`)
 
     // Determine the branch/tag/ref to checkout

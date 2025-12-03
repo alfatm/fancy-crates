@@ -1,10 +1,10 @@
-# Elder Crates
+# Fancy Crates
 
 A VSCode extension and CLI tool helping Rust developers spot outdated dependencies in `Cargo.toml` manifest files.
 
 This is a fork of [**sparse-crates**](https://github.com/citreae535/sparse-crates) by [citreae535](https://github.com/citreae535), which itself was a fork of [**crates**](https://github.com/serayuzgur/crates) by [Seray Uzgur](https://github.com/serayuzgur).
 
-![Elder Crates in Action](https://github.com/alfatm/elder-crates/raw/main/elder_crates_in_action.png)
+![Fancy Crates in Action](https://github.com/alfatm/fancy-crates/raw/main/fancy_crates_in_action.png)
 
 ## Features
 
@@ -33,7 +33,7 @@ node dist/cli.cjs ./Cargo.toml
 ### Usage
 
 ```bash
-elder-crates-cli <path-to-Cargo.toml> [options]
+fancy-crates-cli <path-to-Cargo.toml> [options]
 
 Options:
   --filter <name>        Filter by dependency name (partial match)
@@ -49,16 +49,16 @@ Options:
 
 ```bash
 # Check all dependencies
-elder-crates-cli ./Cargo.toml
+fancy-crates-cli ./Cargo.toml
 
 # Filter by name
-elder-crates-cli ./Cargo.toml --filter serde
+fancy-crates-cli ./Cargo.toml --filter serde
 
 # JSON output for scripting
-elder-crates-cli ./Cargo.toml --json
+fancy-crates-cli ./Cargo.toml --json
 
 # Use custom registry
-elder-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example.com/api/v1/crates/
+fancy-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example.com/api/v1/crates/
 ```
 
 ### Exit Codes
@@ -72,11 +72,11 @@ elder-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example
 
 ## Version Requirements
 
-Elder Crates uses [Cargo's version requirement syntax](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html). A dependency is considered **up-to-date** if the latest stable version satisfies the specified range.
+Fancy Crates uses [Cargo's version requirement syntax](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html). A dependency is considered **up-to-date** if the latest stable version satisfies the specified range.
 
 ### Exact vs Range Versions
 
-Elder Crates distinguishes between **exact versions** and **range versions**:
+Fancy Crates distinguishes between **exact versions** and **range versions**:
 
 - **Exact versions** (`1.2.3`, `0.5.0`) — compared directly against latest. If you specify `1.2.3` and latest is `1.2.4`, you'll see 🟨 patch-behind.
 - **Short/range versions** (`1`, `1.2`, `^1.2.3`, `~1.2.3`) — evaluated as ranges. If you specify `1` and latest is `1.9.0`, you'll see ✅ latest because `1.9.0` satisfies `>=1.0.0, <2.0.0`.
@@ -116,13 +116,13 @@ When you specify a short version or use operators, Cargo interprets it as a rang
 
 ## VSCode Extension Configuration
 
-- `elder-crates.useCargoCache`: If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format.
+- `fancy-crates.useCargoCache`: If true, Cargo's index cache is searched first before the registries. Cache must be stored in the sparse format.
 
-- `elder-crates.cratesIoIndex`: The index URL of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk.
+- `fancy-crates.cratesIoIndex`: The index URL of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. The index must use the sparse protocol. Use a file URL if the mirror is on disk.
 
-- `elder-crates.cratesIoCache`: The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index.
+- `fancy-crates.cratesIoCache`: The index cache directory of the default crates.io registry. Change this value only if you use a remote or local mirror of crates.io. You can find the directories at CARGO_HOME/registry/index.
 
-- `elder-crates.registries`: An array of alternate registries:
+- `fancy-crates.registries`: An array of alternate registries:
 ```json
 {
     "name": "(Required) Registry name matching dependencies' \"registry\" key",
@@ -134,8 +134,8 @@ When you specify a short version or use operators, Cargo interprets it as a rang
 
 ## Commands
 
-- **Elder Crates: Refresh Dependencies** — Re-check dependencies for all visible `Cargo.toml` files
-- **Elder Crates: Reload (Clear Cache)** — Clear all caches (versions, cargo config, CLI tools) and reload the current file
+- **Fancy Crates: Refresh Dependencies** — Re-check dependencies for all visible `Cargo.toml` files
+- **Fancy Crates: Reload (Clear Cache)** — Clear all caches (versions, cargo config, CLI tools) and reload the current file
 
 ## Disabling Checks
 
