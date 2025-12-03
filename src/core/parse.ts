@@ -208,11 +208,7 @@ function parseSingleDependency(
  * "tokio" = "1"
  * ```
  */
-function parseMultipleDependencies(
-  body: TOMLKeyValue[],
-  content?: string,
-  fileDisabled?: boolean,
-): Dependency[] {
+function parseMultipleDependencies(body: TOMLKeyValue[], content?: string, fileDisabled?: boolean): Dependency[] {
   return body
     .map((node): Dependency | undefined => {
       const firstKey = node.key.keys[0]
