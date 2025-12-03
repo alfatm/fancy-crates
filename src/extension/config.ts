@@ -5,7 +5,7 @@ import { type ConfigurationScope, type Uri, workspace } from 'vscode'
 import type { CargoConfig } from '../core/cargo'
 import { getSourceReplacement, loadCargoConfig } from '../core/cargo'
 import { CRATES_IO_CACHE, CRATES_IO_INDEX, mergeRegistries, type RegistryConfig } from '../core/config'
-import type { GitSourceOptions, ValidatorConfig } from '../core/types'
+import type { ValidatorConfig } from '../core/types'
 import log from './log'
 
 /** User agent for VSCode extension requests */
@@ -78,21 +78,12 @@ export function buildValidatorConfig(scope: ConfigurationScope): ValidatorConfig
   // Build source replacement from cargo config
   const sourceReplacement = getSourceReplacement(cargoConfig)
 
-  // Build git options from settings
-  const gitOptions: GitSourceOptions = {
-    enableGitArchive: vscodeConfig.get('gitArchive') ?? false,
-    enableShallowClone: vscodeConfig.get('experimentalShallowClone') ?? false,
-  }
-
   return {
     cratesIoIndex: getCrateIoIndex(scope),
     cratesIoCache: getCrateIoCache(scope),
     useCargoCache: vscodeConfig.get('useCargoCache') ?? true,
     registries,
     sourceReplacement,
-    fetchOptions: {
-      gitOptions,
-    },
   }
 }
 

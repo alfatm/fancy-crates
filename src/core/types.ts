@@ -145,17 +145,6 @@ export interface CustomGitHost {
  */
 export interface GitSourceOptions {
   /**
-   * Enable git archive method (requires git, sh, tar).
-   * Only works with servers that support `git archive --remote`.
-   */
-  enableGitArchive?: boolean
-  /**
-   * (Experimental) Enable shallow clone method for git dependencies.
-   * This creates temporary directories and runs git commands.
-   * Disabled by default.
-   */
-  enableShallowClone?: boolean
-  /**
    * Custom git hosts configuration for private/enterprise repositories.
    * Allows specifying authentication tokens and host types.
    */

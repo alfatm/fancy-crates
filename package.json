@@ -1,6 +1,6 @@
 {
   "name": "fancy-crates",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "author": {
     "name": "alfatm"
   },
@@ -116,18 +116,6 @@
           },
           "default": [],
           "description": "A list of alternate registries. The index of an alternate registry must support the sparse protocol."
-        },
-        "fancy-crates.gitArchive": {
-          "type": "boolean",
-          "scope": "resource",
-          "default": true,
-          "markdownDescription": "Enable `git archive` method for fetching versions from git dependencies. Requires `git`, `sh`, and `tar` to be available on PATH. Only works with git servers that support `git archive --remote`."
-        },
-        "fancy-crates.experimentalShallowClone": {
-          "type": "boolean",
-          "scope": "resource",
-          "default": false,
-          "markdownDescription": "**Experimental**: Enable shallow clone method for fetching versions from git dependencies. Creates temporary directories and runs git commands. Requires `git` to be available on PATH."
         }
       }
     }

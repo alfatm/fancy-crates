@@ -1,6 +1,5 @@
 import { exec } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -86,7 +85,7 @@ export function resolveSourceVersion(
  */
 async function resolvePathVersion(
   depPath: string,
-  _crateName: string,
+  crateName: string,
   cargoTomlDir: string,
   options?: FetchOptions,
 ): Promise<SourceResolution> {
@@ -98,11 +97,36 @@ async function resolvePathVersion(
     options?.logger?.debug(`Reading path dependency from: ${cargoTomlPath}`)
 
     const content = await readFile(cargoTomlPath, 'utf-8')
-    const version = extractVersionFromCargoToml(content)
+    const info = extractCargoTomlInfo(content)
 
-    if (version) {
-      options?.logger?.debug(`Found version ${depPath}:${version} in path dependency`)
-      return { version }
+    if (info.version) {
+      options?.logger?.debug(`Found version ${depPath}:${info.version} in path dependency`)
+      return { version: info.version }
+    }
+
+    // If no version found, check if this is a workspace and search members
+    if (info.workspaceMembers && info.workspaceMembers.length > 0) {
+      options?.logger?.debug(`Found workspace with members: ${info.workspaceMembers.join(', ')}`)
+      const expandedMembers = await expandWorkspaceMembers(absolutePath, info.workspaceMembers)
+
+      for (const memberPath of expandedMembers) {
+        const memberCargoTomlPath = path.join(absolutePath, memberPath, 'Cargo.toml')
+        try {
+          const memberContent = await readFile(memberCargoTomlPath, 'utf-8')
+          const memberInfo = extractCargoTomlInfo(memberContent)
+
+          // Check if this member's package name matches the crate we're looking for
+          const memberName = extractPackageName(memberContent)
+          if (memberName === crateName && memberInfo.version) {
+            options?.logger?.debug(
+              `Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`,
+            )
+            return { version: memberInfo.version }
+          }
+        } catch {
+          // Member Cargo.toml doesn't exist or can't be read, skip
+        }
+      }
     }
 
     return {
@@ -119,7 +143,7 @@ async function resolvePathVersion(
 
 /**
  * Fetches the version from a git repository's Cargo.toml
- * First tries HTTP fetch for GitHub/GitLab, then falls back to git CLI
+ * First tries git archive (works with SSH keys, private repos), then falls back to HTTP
  */
 async function resolveGitVersion(
   gitUrl: string,
@@ -132,25 +156,24 @@ async function resolveGitVersion(
   // Determine the git ref to use
   const ref = rev || tag || branch || 'HEAD'
 
-  // First, try HTTP fetch for known hosts (GitHub/GitLab)
-  const httpResult = await tryHttpFetch(gitUrl, ref, crateName, options)
-  if (httpResult.version) {
-    return httpResult
-  }
-
-  // If HTTP failed, try git CLI (works with SSH keys, private repos, etc.)
-  options?.logger?.debug(`HTTP fetch failed, trying git CLI for: ${gitUrl}`)
+  // First, try git archive (works with SSH keys, private repos, etc.)
   const cliResult = await tryGitCliFetch(gitUrl, ref, crateName, options)
   if (cliResult.version) {
     return cliResult
   }
 
   if (cliResult.error) {
-    options?.logger?.debug(`git CLI fetch failed for ${gitUrl} at ${ref}, ${cliResult.error}`)
+    options?.logger?.debug(`git archive failed for ${gitUrl} at ${ref}, trying HTTP: ${cliResult.error}`)
+  }
+
+  // If git archive failed, try HTTP fetch for known hosts (GitHub/GitLab)
+  const httpResult = await tryHttpFetch(gitUrl, ref, crateName, options)
+  if (httpResult.version) {
+    return httpResult
   }
 
   // Return the more informative error
-  return httpResult.error ? httpResult : cliResult
+  return cliResult.error ? cliResult : httpResult
 }
 
 /**
@@ -208,10 +231,25 @@ async function tryHttpFetch(
         })
         if (rootResponse.ok) {
           const content = await rootResponse.text()
-          const version = extractVersionFromCargoToml(content)
-          if (version) {
-            options?.logger?.debug(`Found version ${version} in git dependency root`)
-            return { version }
+          const info = extractCargoTomlInfo(content)
+          if (info.version) {
+            options?.logger?.debug(`Found version ${info.version} in git dependency root`)
+            return { version: info.version }
+          }
+
+          // Check workspace members if no direct version
+          if (info.workspaceMembers && info.workspaceMembers.length > 0) {
+            const workspaceResult = await searchWorkspaceMembersHttp(
+              gitUrl,
+              ref,
+              crateName,
+              info.workspaceMembers,
+              customHosts,
+              options,
+            )
+            if (workspaceResult.version) {
+              return workspaceResult
+            }
           }
         }
       }
@@ -223,11 +261,26 @@ async function tryHttpFetch(
     }
 
     const content = await response.text()
-    const version = extractVersionFromCargoToml(content)
+    const info = extractCargoTomlInfo(content)
 
-    if (version) {
-      options?.logger?.debug(`Found version ${version} in git dependency via HTTP`)
-      return { version }
+    if (info.version) {
+      options?.logger?.debug(`Found version ${info.version} in git dependency via HTTP`)
+      return { version: info.version }
+    }
+
+    // Check workspace members if no direct version
+    if (info.workspaceMembers && info.workspaceMembers.length > 0) {
+      const workspaceResult = await searchWorkspaceMembersHttp(
+        gitUrl,
+        ref,
+        crateName,
+        info.workspaceMembers,
+        customHosts,
+        options,
+      )
+      if (workspaceResult.version) {
+        return workspaceResult
+      }
     }
 
     return {
@@ -243,7 +296,68 @@ async function tryHttpFetch(
 }
 
 /**
- * Try to fetch Cargo.toml using git CLI (supports SSH, private repos)
+ * Search workspace members via HTTP for the crate version
+ * Note: For patterns like "crates/*", we try common paths based on crateName
+ */
+async function searchWorkspaceMembersHttp(
+  gitUrl: string,
+  ref: string,
+  crateName: string,
+  workspaceMembers: string[],
+  customHosts: CustomGitHost[] | undefined,
+  options?: FetchOptions,
+): Promise<SourceResolution> {
+  options?.logger?.debug(`Searching workspace members for ${crateName}: ${workspaceMembers.join(', ')}`)
+
+  // Build list of potential paths to check
+  const pathsToCheck: string[] = []
+
+  for (const member of workspaceMembers) {
+    if (member.includes('*')) {
+      // For glob patterns like "crates/*", try the crateName directly
+      const prefix = member.replace('*', '')
+      pathsToCheck.push(`${prefix}${crateName}`)
+    } else {
+      pathsToCheck.push(member)
+    }
+  }
+
+  // Try each path
+  for (const memberPath of pathsToCheck) {
+    const memberRawUrl = getGitRawFileUrlForPath(gitUrl, ref, `${memberPath}/Cargo.toml`, customHosts)
+    if (!memberRawUrl) {
+      continue
+    }
+
+    try {
+      options?.logger?.debug(`Trying workspace member: ${memberRawUrl.url}`)
+      const headers = buildGitFetchHeaders(options?.userAgent, memberRawUrl.token)
+      const response = await fetch(memberRawUrl.url, {
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      })
+
+      if (response.ok) {
+        const content = await response.text()
+        const memberName = extractPackageName(content)
+        const memberInfo = extractCargoTomlInfo(content)
+
+        if (memberName === crateName && memberInfo.version) {
+          options?.logger?.debug(
+            `Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`,
+          )
+          return { version: memberInfo.version }
+        }
+      }
+    } catch {
+      // Skip failed requests
+    }
+  }
+
+  return { version: undefined }
+}
+
+/**
+ * Try to fetch Cargo.toml using git archive (supports SSH, private repos)
  */
 async function tryGitCliFetch(
   gitUrl: string,
@@ -251,38 +365,20 @@ async function tryGitCliFetch(
   crateName: string,
   options?: FetchOptions,
 ): Promise<SourceResolution> {
-  const gitOptions = options?.gitOptions
-
-  // Method 1: Try git archive if enabled (requires git, sh, tar)
-  if (gitOptions?.enableGitArchive) {
-    const cliTools = await checkCliToolsAvailability()
-    if (cliTools.git && cliTools.sh && cliTools.tar) {
-      const archiveResult = await tryGitArchive(gitUrl, ref, crateName, options)
-      if (archiveResult.version) {
-        return archiveResult
-      } else {
-        options?.logger?.debug(`Unable to fetch via git archive: ${archiveResult.error}`)
-      }
-    } else {
-      options?.logger?.debug(
-        `Skipping git archive: missing CLI tools (git=${cliTools.git}, sh=${cliTools.sh}, tar=${cliTools.tar})`,
-      )
+  // Try git archive (requires git, sh, tar)
+  const cliTools = await checkCliToolsAvailability()
+  if (cliTools.git && cliTools.sh && cliTools.tar) {
+    const archiveResult = await tryGitArchive(gitUrl, ref, crateName, options)
+    if (archiveResult.version) {
+      return archiveResult
+    }
+    if (archiveResult.error) {
+      options?.logger?.debug(`Unable to fetch via git archive: ${archiveResult.error}`)
     }
   } else {
-    options?.logger?.debug(`Skipping git archive: disabled`)
-  }
-
-  // Method 2: Try shallow clone if enabled (experimental, requires git)
-  if (gitOptions?.enableShallowClone) {
-    const cliTools = await checkCliToolsAvailability()
-    if (cliTools.git) {
-      const cloneResult = await tryShallowClone(gitUrl, ref, crateName, options)
-      if (cloneResult.version) {
-        return cloneResult
-      }
-    } else {
-      options?.logger?.debug('Skipping shallow clone: git not available')
-    }
+    options?.logger?.debug(
+      `Skipping git archive: missing CLI tools (git=${cliTools.git}, sh=${cliTools.sh}, tar=${cliTools.tar})`,
+    )
   }
 
   return {
@@ -313,10 +409,25 @@ async function tryGitArchive(
         },
       )
 
-      const version = extractVersionFromCargoToml(stdout)
-      if (version) {
-        options?.logger?.debug(`Found version ${version} via git archive`)
-        return { version }
+      const info = extractCargoTomlInfo(stdout)
+      if (info.version) {
+        options?.logger?.debug(`Found version ${info.version} via git archive`)
+        return { version: info.version }
+      }
+
+      // Check workspace members if no direct version
+      if (info.workspaceMembers && info.workspaceMembers.length > 0) {
+        options?.logger?.debug(`Found workspace with members: ${info.workspaceMembers.join(', ')}`)
+        const workspaceResult = await searchWorkspaceMembersGitArchive(
+          gitUrl,
+          ref,
+          crateName,
+          info.workspaceMembers,
+          options,
+        )
+        if (workspaceResult.version) {
+          return workspaceResult
+        }
       }
     } catch {
       options?.logger?.debug(`git archive attempt failed for ${gitUrl} ref=${ref} path=${filePath}`)
@@ -328,91 +439,56 @@ async function tryGitArchive(
 }
 
 /**
- * Try shallow clone with sparse checkout to get just Cargo.toml
+ * Search workspace members via git archive for the crate version
  */
-async function tryShallowClone(
+async function searchWorkspaceMembersGitArchive(
   gitUrl: string,
   ref: string,
   crateName: string,
+  workspaceMembers: string[],
   options?: FetchOptions,
 ): Promise<SourceResolution> {
-  let tempDir: string | undefined
+  options?.logger?.debug(`Searching workspace members via git archive for ${crateName}: ${workspaceMembers.join(', ')}`)
 
-  try {
-    // Create temp directory
-    tempDir = await mkdtemp(path.join(tmpdir(), 'fancy-crates-git-'))
-    options?.logger?.debug(`Created temp dir: ${tempDir}`)
+  // Build list of potential paths to check
+  const pathsToCheck: string[] = []
 
-    // Determine the branch/tag/ref to checkout
-    // For SHA refs, we need to fetch specifically
-    const isSha = /^[0-9a-f]{7,40}$/i.test(ref)
-
-    // Initialize sparse checkout
-    await execAsync(`git init`, { cwd: tempDir, timeout: 10000 })
-    await execAsync(`git remote add origin "${gitUrl}"`, { cwd: tempDir, timeout: 10000 })
-
-    // Configure sparse checkout to only get Cargo.toml files
-    await execAsync(`git config core.sparseCheckout true`, { cwd: tempDir, timeout: 5000 })
-
-    // Write sparse checkout patterns
-    const patterns = crateName ? [`${crateName}/Cargo.toml`, 'Cargo.toml'] : ['Cargo.toml']
-    const sparseCheckoutPath = path.join(tempDir, '.git', 'info', 'sparse-checkout')
-    const { writeFile } = await import('node:fs/promises')
-    await writeFile(sparseCheckoutPath, `${patterns.join('\n')}\n`)
-
-    // Fetch with depth 1
-    if (isSha) {
-      // For SHA, we need to fetch the specific commit
-      options?.logger?.debug(`Fetching SHA ${ref} from ${gitUrl}`)
-      await execAsync(`git fetch --depth 1 origin "${ref}"`, { cwd: tempDir, timeout: 60000 })
-      await execAsync(`git checkout FETCH_HEAD`, { cwd: tempDir, timeout: 10000 })
+  for (const member of workspaceMembers) {
+    if (member.includes('*')) {
+      // For glob patterns like "crates/*", try the crateName directly
+      const prefix = member.replace('*', '')
+      pathsToCheck.push(`${prefix}${crateName}`)
     } else {
-      // For branches/tags, use standard fetch
-      options?.logger?.debug(`Fetching ref ${ref} from ${gitUrl}`)
-      try {
-        await execAsync(`git fetch --depth 1 origin "${ref}"`, { cwd: tempDir, timeout: 60000 })
-        await execAsync(`git checkout FETCH_HEAD`, { cwd: tempDir, timeout: 10000 })
-      } catch {
-        // Try as branch name
-        await execAsync(`git fetch --depth 1 origin "refs/heads/${ref}:refs/remotes/origin/${ref}"`, {
-          cwd: tempDir,
-          timeout: 60000,
-        })
-        await execAsync(`git checkout "origin/${ref}"`, { cwd: tempDir, timeout: 10000 })
-      }
-    }
-
-    // Try to read Cargo.toml from the cloned repo
-    for (const filePath of patterns) {
-      try {
-        const cargoTomlPath = path.join(tempDir, filePath)
-        options?.logger?.debug(`Reading ${cargoTomlPath}`)
-        const content = await readFile(cargoTomlPath, 'utf-8')
-        const version = extractVersionFromCargoToml(content)
-        if (version) {
-          options?.logger?.debug(`Found version ${version} via shallow clone`)
-          return { version }
-        }
-      } catch {
-        // Try next path
-      }
-    }
-
-    return { version: undefined }
-  } catch (err) {
-    options?.logger?.debug(`Shallow clone failed: ${err instanceof Error ? err.message : String(err)}`)
-    return { version: undefined }
-  } finally {
-    // Cleanup temp directory
-    if (tempDir) {
-      try {
-        await rm(tempDir, { recursive: true, force: true })
-        options?.logger?.debug(`Cleaned up temp dir: ${tempDir}`)
-      } catch {
-        // Ignore cleanup errors
-      }
+      pathsToCheck.push(member)
     }
   }
+
+  // Try each path
+  for (const memberPath of pathsToCheck) {
+    const filePath = `${memberPath}/Cargo.toml`
+    try {
+      options?.logger?.debug(`Trying workspace member via git archive: ${filePath}`)
+
+      const { stdout } = await execAsync(
+        `git archive --remote="${gitUrl}" "${ref}" "${filePath}" 2>/dev/null | tar -xO`,
+        {
+          timeout: 30000,
+        },
+      )
+
+      const memberName = extractPackageName(stdout)
+      const memberInfo = extractCargoTomlInfo(stdout)
+
+      if (memberName === crateName && memberInfo.version) {
+        options?.logger?.debug(`Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`)
+        return { version: memberInfo.version }
+      }
+    } catch {
+      // Skip failed requests
+    }
+  }
+
+  return { version: undefined }
 }
 
 /**
@@ -489,13 +565,84 @@ export function getGitRawFileUrl(
 }
 
 /**
- * Extracts the version from a Cargo.toml content string
+ * Converts a git URL to a raw file URL for a specific file path
  */
-function extractVersionFromCargoToml(content: string): semver.SemVer | undefined {
+export function getGitRawFileUrlForPath(
+  gitUrl: string,
+  ref: string,
+  filePath: string,
+  customHosts?: CustomGitHost[],
+): GitRawUrlResult | undefined {
+  // Normalize the URL
+  let url = gitUrl.trim()
+
+  // Remove .git suffix if present
+  if (url.endsWith('.git')) {
+    url = url.slice(0, -4)
+  }
+
+  // Check custom hosts first
+  if (customHosts) {
+    for (const customHost of customHosts) {
+      const hostPattern = customHost.host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const hostRegex = new RegExp(`${hostPattern}[/:]([^/]+)/([^/]+)`)
+      const match = url.match(hostRegex)
+      if (match) {
+        const [, owner, repo] = match
+        if (customHost.type === 'github') {
+          return {
+            url: `https://${customHost.host}/raw/${owner}/${repo}/${ref}/${filePath}`,
+            token: customHost.token,
+          }
+        }
+        if (customHost.type === 'gitlab') {
+          return {
+            url: `https://${customHost.host}/${owner}/${repo}/-/raw/${ref}/${filePath}`,
+            token: customHost.token,
+          }
+        }
+      }
+    }
+  }
+
+  // Handle GitHub
+  const githubMatch = url.match(/github\.com[/:]([^/]+)\/([^/]+)/)
+  if (githubMatch) {
+    const [, owner, repo] = githubMatch
+    return {
+      url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${filePath}`,
+    }
+  }
+
+  // Handle GitLab
+  const gitlabMatch = url.match(/gitlab\.com[/:]([^/]+)\/([^/]+)/)
+  if (gitlabMatch) {
+    const [, owner, repo] = gitlabMatch
+    return {
+      url: `https://gitlab.com/${owner}/${repo}/-/raw/${ref}/${filePath}`,
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * Result of extracting version info from Cargo.toml
+ */
+interface CargoTomlVersionInfo {
+  version?: semver.SemVer
+  workspaceMembers?: string[]
+}
+
+/**
+ * Extracts version and workspace info from a Cargo.toml content string
+ */
+function extractCargoTomlInfo(content: string): CargoTomlVersionInfo {
   try {
     const toml = parseTOML(content)
+    const result: CargoTomlVersionInfo = {}
 
-    // Find [package] table
+    // Find [package] and [workspace] tables
     for (const node of toml.body[0].body) {
       if (node.type === 'TOMLTable') {
         const table = node as TOMLTable
@@ -512,8 +659,24 @@ function extractVersionFromCargoToml(content: string): semver.SemVer | undefined
                 if (value.type === 'TOMLValue' && value.kind === 'string') {
                   const parsed = semver.parse(value.value)
                   if (parsed) {
-                    return parsed
+                    result.version = parsed
                   }
+                }
+              }
+            }
+          }
+        } else if (keys.length === 1 && keys[0] === 'workspace') {
+          // Look for members in [workspace] table
+          for (const kv of table.body) {
+            if (kv.type === 'TOMLKeyValue') {
+              const keyValue = kv as TOMLKeyValue
+              const key = keyValue.key.keys[0]
+              if (key && (key.type === 'TOMLBare' ? key.name : key.value) === 'members') {
+                const value = keyValue.value
+                if (value.type === 'TOMLArray') {
+                  result.workspaceMembers = value.elements
+                    .filter((el) => el.type === 'TOMLValue' && el.kind === 'string')
+                    .map((el) => (el as { value: string }).value)
                 }
               }
             }
@@ -528,7 +691,42 @@ function extractVersionFromCargoToml(content: string): semver.SemVer | undefined
           if (value.type === 'TOMLValue' && value.kind === 'string') {
             const parsed = semver.parse(value.value)
             if (parsed) {
-              return parsed
+              result.version = parsed
+            }
+          }
+        }
+      }
+    }
+
+    return result
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Extracts the package name from a Cargo.toml content string
+ */
+function extractPackageName(content: string): string | undefined {
+  try {
+    const toml = parseTOML(content)
+
+    for (const node of toml.body[0].body) {
+      if (node.type === 'TOMLTable') {
+        const table = node as TOMLTable
+        const keys = table.key.keys.map((k) => (k.type === 'TOMLBare' ? k.name : k.value))
+
+        if (keys.length === 1 && keys[0] === 'package') {
+          for (const kv of table.body) {
+            if (kv.type === 'TOMLKeyValue') {
+              const keyValue = kv as TOMLKeyValue
+              const key = keyValue.key.keys[0]
+              if (key && (key.type === 'TOMLBare' ? key.name : key.value) === 'name') {
+                const value = keyValue.value
+                if (value.type === 'TOMLValue' && value.kind === 'string') {
+                  return value.value
+                }
+              }
             }
           }
         }
@@ -539,4 +737,37 @@ function extractVersionFromCargoToml(content: string): semver.SemVer | undefined
   } catch {
     return undefined
   }
+}
+
+/**
+ * Expand workspace member patterns (e.g., "crates/*") to actual paths
+ */
+async function expandWorkspaceMembers(baseDir: string, members: string[]): Promise<string[]> {
+  const expanded: string[] = []
+
+  for (const member of members) {
+    if (member.includes('*')) {
+      // Simple glob expansion for patterns like "crates/*"
+      const parts = member.split('*')
+      if (parts.length === 2) {
+        const prefix = parts[0] ?? ''
+        const suffix = parts[1] ?? ''
+        const parentDir = path.join(baseDir, prefix)
+        try {
+          const entries = await readdir(parentDir, { withFileTypes: true })
+          for (const entry of entries) {
+            if (entry.isDirectory()) {
+              expanded.push(path.join(prefix, entry.name, suffix).replace(/\/$/, ''))
+            }
+          }
+        } catch {
+          // Directory doesn't exist, skip
+        }
+      }
+    } else {
+      expanded.push(member)
+    }
+  }
+
+  return expanded
 }
