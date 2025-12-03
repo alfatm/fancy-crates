@@ -3,19 +3,19 @@ import path from 'node:path'
 
 import semver from 'semver'
 import { ParseError, parseTOML } from 'toml-eslint-parser'
-import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
-import { DEFAULT_CONFIG, getRegistry } from './config.js'
-import { fetchVersions } from './fetch.js'
-import { type CargoLockfile, findCargoLockPath, getLockedVersion, readCargoLockfile } from './lockfile.js'
-import { parseCargoDependencies } from './parse.js'
-import { resolveSourceVersion } from './source.js'
+import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast'
+import { DEFAULT_CONFIG, getRegistry } from './config'
+import { fetchVersions } from './fetch'
+import { type CargoLockfile, findCargoLockPath, getLockedVersion, readCargoLockfile } from './lockfile'
+import { parseCargoDependencies } from './parse'
+import { resolveSourceVersion } from './source'
 import type {
   Dependency,
   DependencyStatus,
   DependencyValidationResult,
   ValidationResult,
   ValidatorConfig,
-} from './types.js'
+} from './types'
 
 /**
  * Extract the minimum version from a semver Range.
@@ -152,6 +152,17 @@ export const computeStatus = (
 }
 
 /**
+ * Get the locked version for a dependency from the lockfile.
+ * Returns undefined if lockfile is not available or dependency has no version requirement.
+ */
+const getLocked = (lockfile: CargoLockfile | undefined, dep: Dependency): semver.SemVer | undefined => {
+  if (!lockfile || !dep.version) {
+    return undefined
+  }
+  return getLockedVersion(lockfile, dep.name, dep.version)
+}
+
+/**
  * Find the best matching version for a given semver range.
  * Unlike semver.maxSatisfying, this properly handles Cargo's version requirements.
  */
@@ -175,14 +186,12 @@ const validateRegistryDependency = async (
     const resolved = dep.version ? findResolvedVersion(versions, dep.version) : null
     const latestStable = versions.find((v) => v.prerelease.length === 0)
     const latest = versions[0]
-    const locked = lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined
-
     return {
       dependency: dep,
       resolved,
       latestStable,
       latest,
-      locked,
+      locked: getLocked(lockfile, dep),
       status: dep.version ? computeStatus(dep.version, latestStable, latest, dep.versionRaw) : 'error',
     }
   } catch (err) {
@@ -191,7 +200,7 @@ const validateRegistryDependency = async (
       resolved: null,
       latestStable: undefined,
       latest: undefined,
-      locked: lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+      locked: getLocked(lockfile, dep),
       error: err instanceof Error ? err : new Error(String(err)),
       status: 'error',
     }
@@ -214,7 +223,7 @@ const validateSourceDependency = async (
         resolved: sourceResolution.version ?? null,
         latestStable: sourceResolution.version,
         latest: sourceResolution.version,
-        locked: lockfile && dep.version ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+        locked: getLocked(lockfile, dep),
         error: sourceResolution.error,
         status: sourceResolution.version ? 'latest' : 'error',
       }
@@ -231,7 +240,7 @@ const validateSourceDependency = async (
         resolved: satisfies ? sourceVersion : null,
         latestStable: sourceVersion,
         latest: sourceVersion,
-        locked: lockfile ? getLockedVersion(lockfile, dep.name, dep.version) : undefined,
+        locked: getLocked(lockfile, dep),
         status: satisfies ? 'latest' : 'error',
         error: satisfies ? undefined : new Error(`Source version ${sourceVersion} does not satisfy ${dep.versionRaw}`),
       }

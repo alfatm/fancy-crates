@@ -8,7 +8,7 @@ import type {
   TOMLTable,
 } from 'toml-eslint-parser/lib/ast'
 
-import type { Dependency, DependencySource } from './types.js'
+import type { Dependency, DependencySource } from './types'
 
 /** The disable-check comment pattern for individual dependencies */
 const DISABLE_CHECK_INLINE = /# *crates: *disable-check/i

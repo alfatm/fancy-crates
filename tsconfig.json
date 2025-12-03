@@ -2,12 +2,14 @@
   "compilerOptions": {
     "target": "ES2019",
     "useDefineForClassFields": true,
-    "module": "CommonJS",
+    "module": "esnext",
     "noEmit": true,
     "lib": [
       "ES2019",
       "WebWorker"
     ],
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -25,7 +27,6 @@
     "declarationMap": true,
     "strictNullChecks": true,
     "sourceMap": true,
-    "resolveJsonModule": true,
     "noUncheckedSideEffectImports": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import semver from 'semver'
 import { Agent, fetch } from 'undici'
 
-import type { FetchOptions, Logger, Registry } from './types.js'
+import type { FetchOptions, Logger, Registry } from './types'
 
 const DEFAULT_USER_AGENT = 'FancyCrates (https://github.com/alfatm/fancy-crates)'
 const FETCH_TIMEOUT_MS = 30000

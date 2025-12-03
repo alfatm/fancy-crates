@@ -1,7 +1,7 @@
 import assert from 'node:assert'
 import { describe, test } from 'node:test'
-import { getGitRawFileUrl } from './source.js'
-import type { CustomGitHost } from './types.js'
+import { getGitRawFileUrl } from './source'
+import type { CustomGitHost } from './types'
 
 describe('getGitRawFileUrl', () => {
   describe('GitHub public repositories', () => {

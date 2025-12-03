@@ -2,9 +2,9 @@ import assert from 'node:assert'
 import { describe, test } from 'node:test'
 import semver from 'semver'
 import { parseTOML } from 'toml-eslint-parser'
-import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
-import { parseCargoDependencies, parseVersionRange } from './parse.js'
-import { compareVersionDiff, computeStatus, getMinVersionFromRange, isExactVersion } from './validate.js'
+import type { TOMLTable } from 'toml-eslint-parser/lib/ast/ast'
+import { parseCargoDependencies, parseVersionRange } from './parse'
+import { compareVersionDiff, computeStatus, getMinVersionFromRange, isExactVersion } from './validate'
 
 function assertDefined<T>(value: T | null | undefined, msg = 'Expected value to be defined'): T {
   assert.ok(value != null, msg)

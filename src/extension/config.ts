@@ -2,11 +2,11 @@ import path from 'node:path'
 
 import { type ConfigurationScope, type Uri, workspace } from 'vscode'
 
-import type { CargoConfig } from '../core/cargo.js'
-import { loadCargoConfig } from '../core/cargo.js'
-import { CRATES_IO_CACHE, CRATES_IO_INDEX, mergeRegistries, type RegistryConfig } from '../core/config.js'
-import type { GitSourceOptions, ValidatorConfig } from '../core/types.js'
-import log from './log.js'
+import type { CargoConfig } from '../core/cargo'
+import { getSourceReplacement, loadCargoConfig } from '../core/cargo'
+import { CRATES_IO_CACHE, CRATES_IO_INDEX, mergeRegistries, type RegistryConfig } from '../core/config'
+import type { GitSourceOptions, ValidatorConfig } from '../core/types'
+import log from './log'
 
 /** User agent for VSCode extension requests */
 export const VSCODE_USER_AGENT =
@@ -17,10 +17,13 @@ const cargoConfigCache = new Map<string, CargoConfig>()
 
 /**
  * Clear the cargo config cache.
- * Call this when configuration changes.
+ * Call this when configuration changes or .cargo/config.toml files change.
  */
 export function clearCargoConfigCache(): void {
-  cargoConfigCache.clear()
+  if (cargoConfigCache.size > 0) {
+    log.info(`Clearing cargo config cache (${cargoConfigCache.size} entries)`)
+    cargoConfigCache.clear()
+  }
 }
 
 /**
@@ -73,9 +76,7 @@ export function buildValidatorConfig(scope: ConfigurationScope): ValidatorConfig
   const registries = mergeRegistries(cargoConfig.registries, settingsRegistries)
 
   // Build source replacement from cargo config
-  const sourceReplacement = cargoConfig.sourceReplacement
-    ? { index: cargoConfig.sourceReplacement.index, token: cargoConfig.sourceReplacement.token }
-    : undefined
+  const sourceReplacement = getSourceReplacement(cargoConfig)
 
   // Build git options from settings
   const gitOptions: GitSourceOptions = {

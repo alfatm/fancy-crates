@@ -1,6 +1,6 @@
 import { Range, WorkspaceEdit, window, workspace } from 'vscode'
 
-import log from './log.js'
+import log from './log'
 
 export interface UpdateDependencyArgs {
   /** File path of the Cargo.toml */

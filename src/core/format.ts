@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import type semver from 'semver'
 
-import type { DependencySource, DependencyStatus, DependencyValidationResult } from './types.js'
+import type { DependencySource, DependencyStatus, DependencyValidationResult } from './types'
 
 // Status symbols with colors:
 // 🟢 latest - green

@@ -9,12 +9,13 @@ import type {
   Logger,
   RegistryConfig,
   ValidatorConfig,
-} from '../core/index.js'
+} from '../core/index'
 import {
   checkCliToolsAvailability,
   DEFAULT_CONFIG,
   DOCS_RS_URL,
   formatDependencyResult,
+  getSourceReplacement,
   loadCargoConfig,
   mergeRegistries,
   SYMBOL_ERROR,
@@ -23,7 +24,7 @@ import {
   SYMBOL_MINOR_BEHIND,
   SYMBOL_PATCH_BEHIND,
   validateCargoToml,
-} from '../core/index.js'
+} from '../core/index'
 
 /**
  * Format a single dependency result for CLI output.
@@ -126,9 +127,7 @@ async function main(pathArg: string, options: Options) {
   const registries = mergeRegistries(cargoConfig.registries, cliRegistries)
 
   // Build source replacement config if crates-io is replaced
-  const sourceReplacement = cargoConfig.sourceReplacement
-    ? { index: cargoConfig.sourceReplacement.index, token: cargoConfig.sourceReplacement.token }
-    : undefined
+  const sourceReplacement = getSourceReplacement(cargoConfig)
 
   const verbosity = options.verbose
   const noop = () => {

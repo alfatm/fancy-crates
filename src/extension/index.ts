@@ -1,10 +1,10 @@
 import { commands, type ExtensionContext, ProgressLocation, type TextEditor, window, workspace } from 'vscode'
-
-import { clearVersionsCache, resetCliToolsCache } from '../core/index.js'
-import { clearCargoConfigCache } from './config.js'
-import { decorate } from './decorate.js'
-import log from './log.js'
-import { type UpdateDependencyArgs, updateDependencyVersion } from './updateDependency.js'
+import packageJson from '../../package.json' with { type: 'json' }
+import { clearVersionsCache, resetCliToolsCache } from '../core/index'
+import { clearCargoConfigCache } from './config'
+import { cancelPendingAdvisoryCheck, decorate, disposeDecorations } from './decorate'
+import log from './log'
+import { type UpdateDependencyArgs, updateDependencyVersion } from './updateDependency'
 
 /** Track decorated editors to avoid redundant decoration */
 const decoratedEditors = new Set<TextEditor>()
@@ -13,7 +13,7 @@ const decoratedEditors = new Set<TextEditor>()
 const pendingDecorations = new Map<string, AbortController>()
 
 export function activate(context: ExtensionContext) {
-  log.info('Fancy Crates activated')
+  log.info(`Fancy Crates v${packageJson.version} activated`)
 
   // Register command to manually refresh decorations
   const refreshCommand = commands.registerCommand('fancy-crates.refresh', () => {
@@ -68,6 +68,17 @@ export function activate(context: ExtensionContext) {
     }
   })
 
+  // Watch for .cargo/config.toml changes to invalidate cargo config cache
+  const cargoConfigWatcher = workspace.createFileSystemWatcher('**/.cargo/config.toml')
+  const onCargoConfigChange = () => {
+    log.info('.cargo/config.toml changed, clearing cargo config cache')
+    clearCargoConfigCache()
+    refreshAllCargoToml()
+  }
+  cargoConfigWatcher.onDidChange(onCargoConfigChange)
+  cargoConfigWatcher.onDidCreate(onCargoConfigChange)
+  cargoConfigWatcher.onDidDelete(onCargoConfigChange)
+
   // Register all disposables
   context.subscriptions.push(
     refreshCommand,
@@ -76,6 +87,7 @@ export function activate(context: ExtensionContext) {
     visibleEditorsListener,
     saveListener,
     configListener,
+    cargoConfigWatcher,
     {
       dispose: () => {
         decoratedEditors.clear()
@@ -98,7 +110,7 @@ export function activate(context: ExtensionContext) {
 }
 
 export function deactivate() {
-  // Cleanup handled by disposables
+  disposeDecorations()
 }
 
 function isCargoToml(editor: TextEditor): boolean {
@@ -111,6 +123,8 @@ function cancelPendingDecoration(fileName: string) {
     controller.abort()
     pendingDecorations.delete(fileName)
   }
+  // Also cancel any pending advisory check
+  cancelPendingAdvisoryCheck(fileName)
 }
 
 async function decorateWithProgress(editor: TextEditor): Promise<void> {
@@ -132,7 +146,7 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
         if (controller.signal.aborted) {
           return
         }
-        await decorate(editor)
+        await decorate(editor, controller.signal)
       },
     )
   } catch (err) {

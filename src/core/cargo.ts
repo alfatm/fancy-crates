@@ -29,6 +29,20 @@ export interface CargoConfig {
   sourceReplacement?: CargoSourceReplacement
 }
 
+/**
+ * Extract source replacement config for ValidatorConfig from CargoConfig.
+ * Returns the index and token fields needed by ValidatorConfig.sourceReplacement.
+ */
+export const getSourceReplacement = (cargoConfig: CargoConfig): { index: string; token?: string } | undefined => {
+  if (!cargoConfig.sourceReplacement) {
+    return undefined
+  }
+  return {
+    index: cargoConfig.sourceReplacement.index,
+    token: cargoConfig.sourceReplacement.token,
+  }
+}
+
 interface CargoConfigRegistries {
   registries?: Record<string, { index?: string; token?: string }>
 }

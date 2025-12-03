@@ -1,4 +1,4 @@
-import type { Registry, ValidatorConfig } from './types.js'
+import type { Registry, ValidatorConfig } from './types'
 
 /** Default URLs and cache identifiers */
 export const CRATES_IO_INDEX = new URL('https://index.crates.io/')

@@ -1,14 +1,14 @@
-export type { Advisory, AdvisoryKind, AdvisoryMap, CargoDenyResult } from './advisory.js'
+export type { Advisory, AdvisoryKind, AdvisoryMap, CargoDenyResult } from './advisory'
 export {
   checkAdvisories,
   formatAdvisoriesForHover,
   getAdvisoryEmoji,
   isCargoDenyAvailable,
   SYMBOL_ADVISORY,
-} from './advisory.js'
-export type { CargoConfig, CargoRegistry, CargoSourceReplacement } from './cargo.js'
-export { loadCargoConfig } from './cargo.js'
-export type { RegistryConfig } from './config.js'
+} from './advisory'
+export type { CargoConfig, CargoRegistry, CargoSourceReplacement } from './cargo'
+export { getSourceReplacement, loadCargoConfig } from './cargo'
+export type { RegistryConfig } from './config'
 export {
   CRATES_IO_CACHE,
   CRATES_IO_INDEX,
@@ -17,9 +17,9 @@ export {
   getRegistry,
   mergeRegistries,
   parseRegistryConfig,
-} from './config.js'
-export { clearVersionsCache, fetchVersions } from './fetch.js'
-export type { FormattedDependency } from './format.js'
+} from './config'
+export { clearVersionsCache, fetchVersions } from './fetch'
+export type { FormattedDependency } from './format'
 export {
   formatDependencyResult,
   formatDocsLink,
@@ -28,12 +28,12 @@ export {
   SYMBOL_MAJOR_BEHIND,
   SYMBOL_MINOR_BEHIND,
   SYMBOL_PATCH_BEHIND,
-} from './format.js'
-export type { CargoLockfile, LockedPackage } from './lockfile.js'
-export { findCargoLockPath, getLockedVersion, parseCargoLockfile, readCargoLockfile } from './lockfile.js'
-export { hasFileDisableCheck, hasLineDisableCheck, parseCargoDependencies } from './parse.js'
-export type { GitRawUrlResult, SourceResolution } from './source.js'
-export { checkCliToolsAvailability, getGitRawFileUrl, resetCliToolsCache, resolveSourceVersion } from './source.js'
+} from './format'
+export type { CargoLockfile, LockedPackage } from './lockfile'
+export { findCargoLockPath, getLockedVersion, parseCargoLockfile, readCargoLockfile } from './lockfile'
+export { hasFileDisableCheck, hasLineDisableCheck, parseCargoDependencies } from './parse'
+export type { GitRawUrlResult, SourceResolution } from './source'
+export { checkCliToolsAvailability, getGitRawFileUrl, resetCliToolsCache, resolveSourceVersion } from './source'
 export type {
   CliToolsAvailability,
   CustomGitHost,
@@ -47,5 +47,5 @@ export type {
   Registry,
   ValidationResult,
   ValidatorConfig,
-} from './types.js'
-export { validateCargoToml, validateCargoTomlContent } from './validate.js'
+} from './types'
+export { validateCargoToml, validateCargoTomlContent } from './validate'

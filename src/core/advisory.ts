@@ -2,7 +2,7 @@ import { exec } from 'node:child_process'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
-import type { Logger } from './types.js'
+import type { Logger } from './types'
 
 const execAsync = promisify(exec)
 

@@ -1,6 +1,6 @@
 {
   "name": "fancy-crates",
-  "version": "1.2.9",
+  "version": "1.2.11",
   "author": {
     "name": "alfatm"
   },
@@ -140,8 +140,8 @@
     "vscode:prepublish": "tsc && biome ci src && vite build --minify",
     "build": "tsc && vite build",
     "watch": "vite build --watch",
-    "package": "pnpm vsce package --no-dependencies --out dist",
-    "publish": "pnpm vsce publish --no-dependencies",
+    "package": "pnpm dlx @vscode/vsce@latest package --no-dependencies --out dist",
+    "publish": "pnpm dlx @vscode/vsce@latest publish --no-dependencies",
     "build:cli": "tsc && vite build",
     "cli": "node dist/cli.cjs",
     "fix": "biome format --fix && biome check --fix",

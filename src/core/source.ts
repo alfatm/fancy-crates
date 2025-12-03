@@ -6,9 +6,9 @@ import { promisify } from 'node:util'
 
 import semver from 'semver'
 import { parseTOML } from 'toml-eslint-parser'
-import type { TOMLKeyValue, TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
+import type { TOMLKeyValue, TOMLTable } from 'toml-eslint-parser/lib/ast/ast'
 
-import type { CliToolsAvailability, CustomGitHost, DependencySource, FetchOptions } from './types.js'
+import type { CliToolsAvailability, CustomGitHost, DependencySource, FetchOptions } from './types'
 
 const execAsync = promisify(exec)
 
@@ -101,13 +101,13 @@ async function resolvePathVersion(
     const version = extractVersionFromCargoToml(content)
 
     if (version) {
-      options?.logger?.debug(`Found version ${version} in path dependency`)
+      options?.logger?.debug(`Found version ${depPath}:${version} in path dependency`)
       return { version }
     }
 
     return {
       version: undefined,
-      error: new Error(`No version found in ${cargoTomlPath}`),
+      error: new Error(`No version found in ${depPath}:${cargoTomlPath}`),
     }
   } catch (err) {
     return {
@@ -143,6 +143,10 @@ async function resolveGitVersion(
   const cliResult = await tryGitCliFetch(gitUrl, ref, crateName, options)
   if (cliResult.version) {
     return cliResult
+  }
+
+  if (cliResult.error) {
+    options?.logger?.debug(`git CLI fetch failed for ${gitUrl} at ${ref}, ${cliResult.error}`)
   }
 
   // Return the more informative error
@@ -256,12 +260,16 @@ async function tryGitCliFetch(
       const archiveResult = await tryGitArchive(gitUrl, ref, crateName, options)
       if (archiveResult.version) {
         return archiveResult
+      } else {
+        options?.logger?.debug(`Unable to fetch via git archive: ${archiveResult.error}`)
       }
     } else {
       options?.logger?.debug(
         `Skipping git archive: missing CLI tools (git=${cliTools.git}, sh=${cliTools.sh}, tar=${cliTools.tar})`,
       )
     }
+  } else {
+    options?.logger?.debug(`Skipping git archive: disabled`)
   }
 
   // Method 2: Try shallow clone if enabled (experimental, requires git)
