@@ -120,6 +120,27 @@ export interface FetchOptions {
 }
 
 /**
+ * Custom git host configuration for private repositories
+ */
+export interface CustomGitHost {
+  /**
+   * Host pattern to match (e.g., "github.mycompany.com" or "gitlab.internal.org")
+   */
+  host: string
+  /**
+   * Type of git hosting platform: "github" or "gitlab"
+   * Used to determine the raw file URL format
+   */
+  type: 'github' | 'gitlab'
+  /**
+   * Authentication token for accessing private repositories
+   * For GitHub: personal access token or fine-grained token
+   * For GitLab: personal access token or project token
+   */
+  token?: string
+}
+
+/**
  * Options for git source resolution
  */
 export interface GitSourceOptions {
@@ -134,6 +155,11 @@ export interface GitSourceOptions {
    * Disabled by default.
    */
   enableShallowClone?: boolean
+  /**
+   * Custom git hosts configuration for private/enterprise repositories.
+   * Allows specifying authentication tokens and host types.
+   */
+  customHosts?: CustomGitHost[]
 }
 
 /**

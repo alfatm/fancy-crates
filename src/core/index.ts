@@ -24,10 +24,11 @@ export {
 export type { CargoLockfile, LockedPackage } from './lockfile.js'
 export { findCargoLockPath, getLockedVersion, parseCargoLockfile, readCargoLockfile } from './lockfile.js'
 export { hasFileDisableCheck, hasLineDisableCheck, parseCargoDependencies } from './parse.js'
-export type { SourceResolution } from './source.js'
-export { checkCliToolsAvailability, resetCliToolsCache, resolveSourceVersion } from './source.js'
+export type { GitRawUrlResult, SourceResolution } from './source.js'
+export { checkCliToolsAvailability, getGitRawFileUrl, resetCliToolsCache, resolveSourceVersion } from './source.js'
 export type {
   CliToolsAvailability,
+  CustomGitHost,
   Dependency,
   DependencySource,
   DependencyStatus,

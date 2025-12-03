@@ -83,7 +83,7 @@ program
     parseRegistry,
     [],
   )
-  .option('--git-archive', 'Enable git archive method for git dependencies (requires git, sh, tar)', false)
+  .option('--git-archive', 'Enable git archive method for git dependencies (requires git, sh, tar)', true)
   .option(
     '--experimental-shallow-clone',
     '(Experimental) Enable shallow clone method for git dependencies (requires git)',

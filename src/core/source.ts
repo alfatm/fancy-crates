@@ -8,7 +8,7 @@ import semver from 'semver'
 import { parseTOML } from 'toml-eslint-parser'
 import type { TOMLKeyValue, TOMLTable } from 'toml-eslint-parser/lib/ast/ast.js'
 
-import type { CliToolsAvailability, DependencySource, FetchOptions } from './types.js'
+import type { CliToolsAvailability, CustomGitHost, DependencySource, FetchOptions } from './types.js'
 
 const execAsync = promisify(exec)
 
@@ -150,6 +150,20 @@ async function resolveGitVersion(
 }
 
 /**
+ * Build headers for git HTTP fetch
+ */
+function buildGitFetchHeaders(userAgent?: string, token?: string): Record<string, string> {
+  const headers: Record<string, string> = {}
+  if (userAgent) {
+    headers['User-Agent'] = userAgent
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  return headers
+}
+
+/**
  * Try to fetch Cargo.toml via HTTP for GitHub/GitLab
  */
 async function tryHttpFetch(
@@ -159,10 +173,12 @@ async function tryHttpFetch(
   options?: FetchOptions,
 ): Promise<SourceResolution> {
   try {
-    // Convert git URL to raw file URL for GitHub/GitLab
-    const rawUrl = getGitRawFileUrl(gitUrl, ref, crateName)
+    const customHosts = options?.gitOptions?.customHosts
 
-    if (!rawUrl) {
+    // Convert git URL to raw file URL for GitHub/GitLab
+    const rawUrlResult = getGitRawFileUrl(gitUrl, ref, crateName, customHosts)
+
+    if (!rawUrlResult) {
       options?.logger?.debug(`Cannot determine raw URL for git dependency: ${gitUrl}`)
       return {
         version: undefined,
@@ -170,19 +186,21 @@ async function tryHttpFetch(
       }
     }
 
-    options?.logger?.debug(`Fetching git dependency Cargo.toml from: ${rawUrl}`)
+    options?.logger?.debug(`Fetching git dependency Cargo.toml from: ${rawUrlResult.url}`)
 
-    const response = await fetch(rawUrl, {
-      headers: options?.userAgent ? { 'User-Agent': options.userAgent } : undefined,
+    const headers = buildGitFetchHeaders(options?.userAgent, rawUrlResult.token)
+    const response = await fetch(rawUrlResult.url, {
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
     })
 
     if (!response.ok) {
       // Try root Cargo.toml if crate-specific path failed
-      const rootRawUrl = getGitRawFileUrl(gitUrl, ref)
-      if (rootRawUrl && rootRawUrl !== rawUrl) {
-        options?.logger?.debug(`Trying root Cargo.toml: ${rootRawUrl}`)
-        const rootResponse = await fetch(rootRawUrl, {
-          headers: options?.userAgent ? { 'User-Agent': options.userAgent } : undefined,
+      const rootRawUrlResult = getGitRawFileUrl(gitUrl, ref, undefined, customHosts)
+      if (rootRawUrlResult && rootRawUrlResult.url !== rawUrlResult.url) {
+        options?.logger?.debug(`Trying root Cargo.toml: ${rootRawUrlResult.url}`)
+        const rootHeaders = buildGitFetchHeaders(options?.userAgent, rootRawUrlResult.token)
+        const rootResponse = await fetch(rootRawUrlResult.url, {
+          headers: Object.keys(rootHeaders).length > 0 ? rootHeaders : undefined,
         })
         if (rootResponse.ok) {
           const content = await rootResponse.text()
@@ -293,6 +311,7 @@ async function tryGitArchive(
         return { version }
       }
     } catch {
+      options?.logger?.debug(`git archive attempt failed for ${gitUrl} ref=${ref} path=${filePath}`)
       // Try next path
     }
   }
@@ -389,10 +408,23 @@ async function tryShallowClone(
 }
 
 /**
- * Converts a git URL to a raw file URL for fetching Cargo.toml
- * Supports GitHub and GitLab
+ * Result of resolving a git raw file URL
  */
-function getGitRawFileUrl(gitUrl: string, ref: string, crateName?: string): string | undefined {
+export interface GitRawUrlResult {
+  url: string
+  token?: string
+}
+
+/**
+ * Converts a git URL to a raw file URL for fetching Cargo.toml
+ * Supports GitHub, GitLab, and custom hosts
+ */
+export function getGitRawFileUrl(
+  gitUrl: string,
+  ref: string,
+  crateName?: string,
+  customHosts?: CustomGitHost[],
+): GitRawUrlResult | undefined {
   // Normalize the URL
   let url = gitUrl.trim()
 
@@ -401,21 +433,48 @@ function getGitRawFileUrl(gitUrl: string, ref: string, crateName?: string): stri
     url = url.slice(0, -4)
   }
 
+  const filePath = crateName ? `${crateName}/Cargo.toml` : 'Cargo.toml'
+
+  // Check custom hosts first
+  if (customHosts) {
+    for (const customHost of customHosts) {
+      const hostPattern = customHost.host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const hostRegex = new RegExp(`${hostPattern}[/:]([^/]+)/([^/]+)`)
+      const match = url.match(hostRegex)
+      if (match) {
+        const [, owner, repo] = match
+        if (customHost.type === 'github') {
+          return {
+            url: `https://${customHost.host}/raw/${owner}/${repo}/${ref}/${filePath}`,
+            token: customHost.token,
+          }
+        }
+        if (customHost.type === 'gitlab') {
+          return {
+            url: `https://${customHost.host}/${owner}/${repo}/-/raw/${ref}/${filePath}`,
+            token: customHost.token,
+          }
+        }
+      }
+    }
+  }
+
   // Handle GitHub
   const githubMatch = url.match(/github\.com[/:]([^/]+)\/([^/]+)/)
   if (githubMatch) {
     const [, owner, repo] = githubMatch
-    // If crateName is provided, try to find it in a subdirectory (common for workspaces)
-    const filePath = crateName ? `${crateName}/Cargo.toml` : 'Cargo.toml'
-    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${filePath}`
+    return {
+      url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${filePath}`,
+    }
   }
 
   // Handle GitLab
   const gitlabMatch = url.match(/gitlab\.com[/:]([^/]+)\/([^/]+)/)
   if (gitlabMatch) {
     const [, owner, repo] = gitlabMatch
-    const filePath = crateName ? `${crateName}/Cargo.toml` : 'Cargo.toml'
-    return `https://gitlab.com/${owner}/${repo}/-/raw/${ref}/${filePath}`
+    return {
+      url: `https://gitlab.com/${owner}/${repo}/-/raw/${ref}/${filePath}`,
+    }
   }
 
   return undefined
