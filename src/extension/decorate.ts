@@ -1,6 +1,7 @@
 import {
   type DecorationOptions,
   MarkdownString,
+  type Progress,
   type TextEditor,
   type TextEditorDecorationType,
   ThemeColor,
@@ -155,7 +156,10 @@ export function cancelPendingAdvisoryCheck(fileName: string): void {
   }
 }
 
-export async function decorate(editor: TextEditor, signal?: AbortSignal): Promise<void> {
+/** Progress reporter type for decorate function */
+export type ProgressReporter = Progress<{ message?: string }>
+
+export async function decorate(editor: TextEditor, signal?: AbortSignal, progress?: ProgressReporter): Promise<void> {
   const fileName = editor.document.fileName
   log.info(`${fileName} - decorating file`)
   const scope = editor.document.uri
@@ -170,6 +174,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal): Promis
   }
 
   // Load cargo registries before processing dependencies
+  progress?.report({ message: 'Loading config...' })
   await loadConfigForScope(scope)
 
   if (signal?.aborted) {
@@ -188,6 +193,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal): Promis
   }
 
   // Load Cargo.lock if available
+  progress?.report({ message: 'Reading Cargo.lock...' })
   const lockPath = await findCargoLockPath(fileName)
   const lockfile = lockPath ? readCargoLockfile(lockPath) : undefined
   log.debug(`${fileName} - Cargo.lock: ${lockPath ?? 'not found'}`)
@@ -197,6 +203,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal): Promis
   }
 
   // First, validate versions (fast operation)
+  progress?.report({ message: 'Validating dependencies...' })
   const result = await validateCargoTomlContent(editor.document.getText(), fileName, config, lockfile)
 
   if (signal?.aborted) {
@@ -212,6 +219,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal): Promis
   const emptyAdvisories: AdvisoryMap = new Map()
 
   // Show decorations immediately without advisories
+  progress?.report({ message: `Decorated ${result.dependencies.length} dependencies` })
   applyDecorations(editor, result.dependencies, fileName, docsUrl, emptyAdvisories)
   log.info(`${fileName} - file decorated in ${((Date.now() - start) / 1000).toFixed(2)} seconds`)
 

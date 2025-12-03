@@ -99,9 +99,11 @@ async function resolvePathVersion(
     const content = await readFile(cargoTomlPath, 'utf-8')
     const info = extractCargoTomlInfo(content)
 
-    if (info.version) {
-      options?.logger?.debug(`Found version ${depPath}:${info.version} in path dependency`)
-      return { version: info.version }
+    // Use explicit version, or workspace version if usesWorkspaceVersion is true
+    const effectiveVersion = info.version ?? (info.usesWorkspaceVersion ? info.workspaceVersion : undefined)
+    if (effectiveVersion) {
+      options?.logger?.debug(`Found version ${depPath}:${effectiveVersion} in path dependency`)
+      return { version: effectiveVersion }
     }
 
     // If no version found, check if this is a workspace and search members
@@ -117,11 +119,16 @@ async function resolvePathVersion(
 
           // Check if this member's package name matches the crate we're looking for
           const memberName = extractPackageName(memberContent)
-          if (memberName === crateName && memberInfo.version) {
-            options?.logger?.debug(
-              `Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`,
-            )
-            return { version: memberInfo.version }
+          if (memberName === crateName) {
+            // Use explicit version, or workspace version if member uses workspace inheritance
+            const memberEffectiveVersion =
+              memberInfo.version ?? (memberInfo.usesWorkspaceVersion ? info.workspaceVersion : undefined)
+            if (memberEffectiveVersion) {
+              options?.logger?.debug(
+                `Found version ${memberEffectiveVersion} for ${crateName} in workspace member ${memberPath}`,
+              )
+              return { version: memberEffectiveVersion }
+            }
           }
         } catch {
           // Member Cargo.toml doesn't exist or can't be read, skip
@@ -232,9 +239,12 @@ async function tryHttpFetch(
         if (rootResponse.ok) {
           const content = await rootResponse.text()
           const info = extractCargoTomlInfo(content)
-          if (info.version) {
-            options?.logger?.debug(`Found version ${info.version} in git dependency root`)
-            return { version: info.version }
+
+          // Use explicit version, or workspace version if usesWorkspaceVersion is true
+          const effectiveVersion = info.version ?? (info.usesWorkspaceVersion ? info.workspaceVersion : undefined)
+          if (effectiveVersion) {
+            options?.logger?.debug(`Found version ${effectiveVersion} in git dependency root`)
+            return { version: effectiveVersion }
           }
 
           // Check workspace members if no direct version
@@ -244,6 +254,7 @@ async function tryHttpFetch(
               ref,
               crateName,
               info.workspaceMembers,
+              info.workspaceVersion,
               customHosts,
               options,
             )
@@ -263,9 +274,11 @@ async function tryHttpFetch(
     const content = await response.text()
     const info = extractCargoTomlInfo(content)
 
-    if (info.version) {
-      options?.logger?.debug(`Found version ${info.version} in git dependency via HTTP`)
-      return { version: info.version }
+    // Use explicit version, or workspace version if usesWorkspaceVersion is true
+    const effectiveVersion = info.version ?? (info.usesWorkspaceVersion ? info.workspaceVersion : undefined)
+    if (effectiveVersion) {
+      options?.logger?.debug(`Found version ${effectiveVersion} in git dependency via HTTP`)
+      return { version: effectiveVersion }
     }
 
     // Check workspace members if no direct version
@@ -275,6 +288,7 @@ async function tryHttpFetch(
         ref,
         crateName,
         info.workspaceMembers,
+        info.workspaceVersion,
         customHosts,
         options,
       )
@@ -304,6 +318,7 @@ async function searchWorkspaceMembersHttp(
   ref: string,
   crateName: string,
   workspaceMembers: string[],
+  workspaceVersion: semver.SemVer | undefined,
   customHosts: CustomGitHost[] | undefined,
   options?: FetchOptions,
 ): Promise<SourceResolution> {
@@ -341,11 +356,16 @@ async function searchWorkspaceMembersHttp(
         const memberName = extractPackageName(content)
         const memberInfo = extractCargoTomlInfo(content)
 
-        if (memberName === crateName && memberInfo.version) {
-          options?.logger?.debug(
-            `Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`,
-          )
-          return { version: memberInfo.version }
+        if (memberName === crateName) {
+          // Use explicit version, or workspace version if member uses workspace inheritance
+          const effectiveVersion =
+            memberInfo.version ?? (memberInfo.usesWorkspaceVersion ? workspaceVersion : undefined)
+          if (effectiveVersion) {
+            options?.logger?.debug(
+              `Found version ${effectiveVersion} for ${crateName} in workspace member ${memberPath}`,
+            )
+            return { version: effectiveVersion }
+          }
         }
       }
     } catch {
@@ -365,26 +385,28 @@ async function tryGitCliFetch(
   crateName: string,
   options?: FetchOptions,
 ): Promise<SourceResolution> {
-  // Try git archive (requires git, sh, tar)
   const cliTools = await checkCliToolsAvailability()
-  if (cliTools.git && cliTools.sh && cliTools.tar) {
-    const archiveResult = await tryGitArchive(gitUrl, ref, crateName, options)
-    if (archiveResult.version) {
-      return archiveResult
-    }
-    if (archiveResult.error) {
-      options?.logger?.debug(`Unable to fetch via git archive: ${archiveResult.error}`)
-    }
-  } else {
+  const hasRequiredTools = cliTools.git && cliTools.sh && cliTools.tar
+
+  if (!hasRequiredTools) {
     options?.logger?.debug(
       `Skipping git archive: missing CLI tools (git=${cliTools.git}, sh=${cliTools.sh}, tar=${cliTools.tar})`,
     )
+    return {
+      version: undefined,
+      error: new Error(`Could not fetch Cargo.toml from ${gitUrl} via git CLI (missing required CLI tools)`),
+    }
   }
 
-  return {
-    version: undefined,
-    error: new Error(`Could not fetch Cargo.toml from ${gitUrl} via git CLI (CLI methods disabled or unavailable)`),
+  const result = await tryGitArchive(gitUrl, ref, crateName, options)
+
+  if (!result.version && result.error) {
+    options?.logger?.debug(`Unable to fetch via git archive: ${result.error}`)
   }
+
+  return result.version
+    ? result
+    : { version: undefined, error: result.error ?? new Error(`Could not fetch Cargo.toml from ${gitUrl} via git CLI`) }
 }
 
 /**
@@ -410,9 +432,12 @@ async function tryGitArchive(
       )
 
       const info = extractCargoTomlInfo(stdout)
-      if (info.version) {
-        options?.logger?.debug(`Found version ${info.version} via git archive`)
-        return { version: info.version }
+
+      // Use explicit version, or workspace version if usesWorkspaceVersion is true
+      const effectiveVersion = info.version ?? (info.usesWorkspaceVersion ? info.workspaceVersion : undefined)
+      if (effectiveVersion) {
+        options?.logger?.debug(`Found version ${effectiveVersion} via git archive`)
+        return { version: effectiveVersion }
       }
 
       // Check workspace members if no direct version
@@ -423,6 +448,7 @@ async function tryGitArchive(
           ref,
           crateName,
           info.workspaceMembers,
+          info.workspaceVersion,
           options,
         )
         if (workspaceResult.version) {
@@ -446,6 +472,7 @@ async function searchWorkspaceMembersGitArchive(
   ref: string,
   crateName: string,
   workspaceMembers: string[],
+  workspaceVersion: semver.SemVer | undefined,
   options?: FetchOptions,
 ): Promise<SourceResolution> {
   options?.logger?.debug(`Searching workspace members via git archive for ${crateName}: ${workspaceMembers.join(', ')}`)
@@ -479,9 +506,13 @@ async function searchWorkspaceMembersGitArchive(
       const memberName = extractPackageName(stdout)
       const memberInfo = extractCargoTomlInfo(stdout)
 
-      if (memberName === crateName && memberInfo.version) {
-        options?.logger?.debug(`Found version ${memberInfo.version} for ${crateName} in workspace member ${memberPath}`)
-        return { version: memberInfo.version }
+      if (memberName === crateName) {
+        // Use explicit version, or workspace version if member uses workspace inheritance
+        const effectiveVersion = memberInfo.version ?? (memberInfo.usesWorkspaceVersion ? workspaceVersion : undefined)
+        if (effectiveVersion) {
+          options?.logger?.debug(`Found version ${effectiveVersion} for ${crateName} in workspace member ${memberPath}`)
+          return { version: effectiveVersion }
+        }
       }
     } catch {
       // Skip failed requests
@@ -632,6 +663,10 @@ export function getGitRawFileUrlForPath(
 interface CargoTomlVersionInfo {
   version?: semver.SemVer
   workspaceMembers?: string[]
+  /** Version from [workspace.package] section */
+  workspaceVersion?: semver.SemVer
+  /** True if package uses version.workspace = true */
+  usesWorkspaceVersion?: boolean
 }
 
 /**
@@ -642,7 +677,7 @@ function extractCargoTomlInfo(content: string): CargoTomlVersionInfo {
     const toml = parseTOML(content)
     const result: CargoTomlVersionInfo = {}
 
-    // Find [package] and [workspace] tables
+    // Find [package], [workspace], and [workspace.package] tables
     for (const node of toml.body[0].body) {
       if (node.type === 'TOMLTable') {
         const table = node as TOMLTable
@@ -653,14 +688,24 @@ function extractCargoTomlInfo(content: string): CargoTomlVersionInfo {
           for (const kv of table.body) {
             if (kv.type === 'TOMLKeyValue') {
               const keyValue = kv as TOMLKeyValue
-              const key = keyValue.key.keys[0]
-              if (key && (key.type === 'TOMLBare' ? key.name : key.value) === 'version') {
+              const kvKeys = keyValue.key.keys.map((k) => (k.type === 'TOMLBare' ? k.name : k.value))
+
+              // Check for version = "x.y.z"
+              if (kvKeys.length === 1 && kvKeys[0] === 'version') {
                 const value = keyValue.value
                 if (value.type === 'TOMLValue' && value.kind === 'string') {
                   const parsed = semver.parse(value.value)
                   if (parsed) {
                     result.version = parsed
                   }
+                }
+              }
+
+              // Check for version.workspace = true (inline table style)
+              if (kvKeys.length === 2 && kvKeys[0] === 'version' && kvKeys[1] === 'workspace') {
+                const value = keyValue.value
+                if (value.type === 'TOMLValue' && value.kind === 'boolean' && value.value === true) {
+                  result.usesWorkspaceVersion = true
                 }
               }
             }
@@ -681,11 +726,30 @@ function extractCargoTomlInfo(content: string): CargoTomlVersionInfo {
               }
             }
           }
+        } else if (keys.length === 2 && keys[0] === 'workspace' && keys[1] === 'package') {
+          // Look for version in [workspace.package] table
+          for (const kv of table.body) {
+            if (kv.type === 'TOMLKeyValue') {
+              const keyValue = kv as TOMLKeyValue
+              const key = keyValue.key.keys[0]
+              if (key && (key.type === 'TOMLBare' ? key.name : key.value) === 'version') {
+                const value = keyValue.value
+                if (value.type === 'TOMLValue' && value.kind === 'string') {
+                  const parsed = semver.parse(value.value)
+                  if (parsed) {
+                    result.workspaceVersion = parsed
+                  }
+                }
+              }
+            }
+          }
         }
       } else if (node.type === 'TOMLKeyValue') {
-        // Handle inline [package] key-value at top level (less common but valid)
+        // Handle inline key-value at top level
         const kv = node as TOMLKeyValue
         const keys = kv.key.keys.map((k) => (k.type === 'TOMLBare' ? k.name : k.value))
+
+        // package.version = "x.y.z"
         if (keys.length === 2 && keys[0] === 'package' && keys[1] === 'version') {
           const value = kv.value
           if (value.type === 'TOMLValue' && value.kind === 'string') {
@@ -693,6 +757,25 @@ function extractCargoTomlInfo(content: string): CargoTomlVersionInfo {
             if (parsed) {
               result.version = parsed
             }
+          }
+        }
+
+        // workspace.package.version = "x.y.z"
+        if (keys.length === 3 && keys[0] === 'workspace' && keys[1] === 'package' && keys[2] === 'version') {
+          const value = kv.value
+          if (value.type === 'TOMLValue' && value.kind === 'string') {
+            const parsed = semver.parse(value.value)
+            if (parsed) {
+              result.workspaceVersion = parsed
+            }
+          }
+        }
+
+        // package.version.workspace = true
+        if (keys.length === 3 && keys[0] === 'package' && keys[1] === 'version' && keys[2] === 'workspace') {
+          const value = kv.value
+          if (value.type === 'TOMLValue' && value.kind === 'boolean' && value.value === true) {
+            result.usesWorkspaceVersion = true
           }
         }
       }

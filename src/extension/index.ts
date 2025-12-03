@@ -140,13 +140,13 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
     await window.withProgress(
       {
         location: ProgressLocation.Window,
-        title: 'Fancy Crates: Checking dependencies...',
+        title: 'Fancy Crates',
       },
-      async () => {
+      async (progress) => {
         if (controller.signal.aborted) {
           return
         }
-        await decorate(editor, controller.signal)
+        await decorate(editor, controller.signal, progress)
       },
     )
   } catch (err) {
