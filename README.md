@@ -6,6 +6,8 @@ Keeping dependencies up to date is essential for security patches, bug fixes, an
 
 ![Fancy Crates in Action](https://github.com/alfatm/fancy-crates/raw/main/fancy-crates-in-action.png)
 
+📽️ [Presentation](https://htmlpreview.github.io/?https://github.com/alfatm/fancy-crates/blob/main/presentation.html)
+
 ## Features
 
 - Cargo's [sparse protocol](https://rust-lang.github.io/rfcs/2789-sparse-index.html) for fast index lookups
