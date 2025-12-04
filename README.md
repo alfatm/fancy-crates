@@ -188,7 +188,7 @@ fancy-crates-cli ./Cargo.toml
 fancy-crates-cli ./Cargo.toml --filter serde
 
 # JSON output for scripting
-fancy-crates-cli ./Cargo.toml --json
+fancy-crates-cli ./Cargo.toml --json > output.json
 
 # Use custom registry
 fancy-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example.com/api/v1/crates/
@@ -202,6 +202,66 @@ fancy-crates-cli ./Cargo.toml --registry my-registry=https://my-registry.example
 | 1    | Patch or minor updates available        |
 | 2    | Major updates available                 |
 | 3    | Errors occurred (e.g., crate not found) |
+
+## Programmatic API
+
+Fancy Crates provides a full programmatic API for batch analysis and custom tooling. Perfect for:
+
+- **CI/CD Integration** — Automated dependency checks in your pipeline
+- **Workspace Analysis** — Analyze multiple crates at once
+- **Security Audits** — Find outdated or vulnerable dependencies
+- **Custom Reports** — Generate dependency reports in any format
+
+### Quick Start
+
+```typescript
+import { validateCrate, validateBatch, toJsonWithSummary } from 'fancy-crates/api'
+
+// Analyze a single crate
+const result = await validateCrate('./Cargo.toml')
+const json = toJsonWithSummary(result)
+console.log(`${json.summary.majorBehind} dependencies need major updates`)
+
+// Batch analyze a workspace
+const batch = await validateBatch({
+  rootDir: './my-workspace',
+  concurrency: 5
+})
+console.log(`Analyzed ${batch.totalFiles} crates with ${batch.totalDependencies} dependencies`)
+```
+
+### Features
+
+- **Single & Batch Analysis** — Analyze one file or entire workspace
+- **JSON Export** — Structured output for integration with other tools
+- **Concurrent Processing** — Fast analysis with configurable concurrency
+- **Custom Registries** — Support for private and alternate registries
+- **Flexible Logging** — Debug output for troubleshooting
+
+### Documentation
+
+See [API.md](./API.md) for complete API documentation and examples.
+
+### Examples
+
+Check out the [examples](./examples) directory for ready-to-use scripts:
+
+- **[single-crate.ts](./examples/single-crate.ts)** — Analyze a single Cargo.toml
+- **[batch-analysis.ts](./examples/batch-analysis.ts)** — Batch analyze workspace with report generation
+- **[custom-registry.ts](./examples/custom-registry.ts)** — Use private/custom registries
+- **[security-audit.ts](./examples/security-audit.ts)** — Security audit for CI/CD
+
+### Running Examples
+
+```bash
+# Build examples
+pnpm run build:cli
+
+# Run an example
+node dist/examples/single-crate.cjs ./Cargo.toml
+node dist/examples/batch-analysis.cjs ./workspace
+node dist/examples/security-audit.cjs .
+```
 
 ## Planned Features
 

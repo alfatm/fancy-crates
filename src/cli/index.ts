@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { Command } from 'commander'
+import { toJsonWithSummary } from '../api/index'
 import type { DependencyValidationResult, Logger, RegistryConfig, ValidatorConfig } from '../core/index'
 import {
   DEFAULT_CONFIG,
@@ -182,7 +183,9 @@ async function main(pathArg: string, options: Options) {
     const errors = deps.filter((d) => d.status === 'error')
 
     if (jsonOutput) {
-      console.log(JSON.stringify({ ...result, dependencies: deps }, null, 2))
+      // Use API's JSON formatter for consistent output
+      const jsonResult = toJsonWithSummary({ ...result, dependencies: deps })
+      console.log(JSON.stringify(jsonResult, null, 2))
     } else {
       console.log(`Found ${deps.length} dependencies:\n`)
 

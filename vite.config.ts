@@ -11,6 +11,10 @@ export default defineConfig({
       entry: {
         extension: resolve(__dirname, 'src/extension/index.ts'),
         cli: resolve(__dirname, 'src/cli/index.ts'),
+        'examples/single-crate': resolve(__dirname, 'examples/single-crate.ts'),
+        'examples/batch-analysis': resolve(__dirname, 'examples/batch-analysis.ts'),
+        'examples/custom-registry': resolve(__dirname, 'examples/custom-registry.ts'),
+        'examples/security-audit': resolve(__dirname, 'examples/security-audit.ts'),
       },
       formats: ['cjs'],
       fileName: (_, entryName) => `${entryName}.cjs`,
