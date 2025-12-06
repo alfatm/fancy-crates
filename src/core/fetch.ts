@@ -208,7 +208,7 @@ const fetchLocal = async (name: string, dir: string, source: LocalSource, log: L
       e.code === 'ENOENT'
         ? `${name}: crate not found in ${source}`
         : `${name}: ${source} read error (${e.code ?? e.message})`
-    log.error(message)
+    log.debug(message)
     throw new Error(message)
   }
 }
