@@ -4,10 +4,11 @@ export {
   formatAdvisoriesForHover,
   getAdvisoryEmoji,
   isCargoDenyAvailable,
+  resetCargoDenyCache,
   SYMBOL_ADVISORY,
 } from './advisory'
 export type { CargoConfig, CargoRegistry, CargoSourceReplacement } from './cargo'
-export { getSourceReplacement, loadCargoConfig } from './cargo'
+export { getSourceReplacement, loadCargoConfig, parseCargoConfig } from './cargo'
 export type { RegistryConfig } from './config'
 export {
   CRATES_IO_CACHE,
@@ -21,8 +22,11 @@ export {
 export { clearVersionsCache, fetchVersions } from './fetch'
 export type { FormattedDependency } from './format'
 export {
+  buildNewRequirement,
+  escapeMarkdown,
   formatDependencyResult,
   formatDocsLink,
+  inlineCode,
   SYMBOL_ERROR,
   SYMBOL_LATEST,
   SYMBOL_MAJOR_BEHIND,

@@ -25,6 +25,22 @@ const STATUS_SYMBOLS: Record<DependencyStatus, string> = {
 }
 
 /**
+ * Escape text so it is rendered literally in Markdown.
+ * Values coming from Cargo.toml, registries or cargo-deny must never be able to inject links.
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_{}[\]()<>#+\-.!|~]/g, '\\$&').replace(/\r?\n/g, ' ')
+}
+
+/** Wrap text in an inline code span that cannot be broken out of by backticks in the text */
+export function inlineCode(text: string): string {
+  const longestRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+  const fence = '`'.repeat(longestRun + 1)
+  const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : ''
+  return `${fence}${pad}${text.replace(/\r?\n/g, ' ')}${pad}${fence}`
+}
+
+/**
  * Result of formatting a dependency for display
  */
 export interface FormattedDependency {
@@ -51,7 +67,7 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
     return {
       status,
       decoration: SYMBOL_ERROR,
-      hoverMarkdown: error?.message ?? 'unknown error',
+      hoverMarkdown: escapeMarkdown(error?.message ?? 'unknown error'),
     }
   }
 
@@ -59,7 +75,7 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
     return {
       status: 'error',
       decoration: SYMBOL_ERROR,
-      hoverMarkdown: `no versions of the crate ${name} satisfy the given requirement`,
+      hoverMarkdown: `no versions of the crate ${inlineCode(name)} satisfy the given requirement`,
     }
   }
 
@@ -95,16 +111,16 @@ export function formatDependencyResult(result: DependencyValidationResult, docsU
  */
 function formatSourceInfo(source: DependencySource): string {
   if (source.type === 'path') {
-    return `- **Source**: path \`${source.path}\``
+    return `- **Source**: path ${inlineCode(source.path)}`
   }
   if (source.type === 'git') {
-    let info = `- **Source**: git \`${source.git}\``
+    let info = `- **Source**: git ${inlineCode(source.git)}`
     if (source.branch) {
-      info += ` (branch: ${source.branch})`
+      info += ` (branch: ${inlineCode(source.branch)})`
     } else if (source.tag) {
-      info += ` (tag: ${source.tag})`
+      info += ` (tag: ${inlineCode(source.tag)})`
     } else if (source.rev) {
-      info += ` (rev: ${source.rev.slice(0, 8)})`
+      info += ` (rev: ${inlineCode(source.rev.slice(0, 8))})`
     }
     return info
   }
@@ -132,7 +148,8 @@ function formatHoverMarkdown(
     }
     // Only show docs links for registry dependencies
     if (docsUrl && source.type === 'registry') {
-      const url = docsUrl.endsWith('/') ? `${docsUrl}${name}/${v}` : `${docsUrl}/${name}/${v}`
+      const crate = encodeURIComponent(name)
+      const url = docsUrl.endsWith('/') ? `${docsUrl}${crate}/${v}` : `${docsUrl}/${crate}/${v}`
       return `- **${label}**: [${v}](${url})`
     }
     return `- **${label}**: ${v}`
@@ -174,4 +191,14 @@ export function formatDocsLink(v: semver.SemVer | null | undefined, name: string
   } else {
     return `[${v}](${new URL(path.posix.join(docs.pathname, name, v.format()), docs)})`
   }
+}
+
+/**
+ * Build the new version requirement, keeping a single leading operator of the old one.
+ * `^1.2` -> `^2.0.0`, `~1.2.3` -> `~2.0.0`, `=1.0.0` -> `=2.0.0`, `1.2` -> `2.0.0`.
+ * Compound requirements like `>=1, <2` are replaced with the plain new version.
+ */
+export function buildNewRequirement(oldRequirement: string, newVersion: string): string {
+  const match = /^\s*(\^|~|=)\s*[0-9][^,<>*]*$/.exec(oldRequirement)
+  return match?.[1] ? `${match[1]}${newVersion}` : newVersion
 }

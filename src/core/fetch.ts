@@ -120,7 +120,9 @@ export const fetchVersions = async (
   const log = options.logger ?? noopLogger
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT
 
-  const cached = versionsCache.get(name)
+  // The same crate name may exist in several registries, so the cache key includes the index URL
+  const cacheKey = `${registry.index.href}#${name}`
+  const cached = versionsCache.get(cacheKey)
   if (cached) {
     return cached
   }
@@ -129,7 +131,7 @@ export const fetchVersions = async (
   if (useCache && registry.cache) {
     try {
       const versions = await fetchLocal(name, resolveCacheDir(registry.cache), 'cache', log)
-      versionsCache.set(name, versions)
+      versionsCache.set(cacheKey, versions)
       return versions
     } catch {
       // Cache miss, continue to network
@@ -142,7 +144,7 @@ export const fetchVersions = async (
       ? await fetchLocal(name, fileURLToPath(registry.index), 'local registry', log)
       : await fetchRemote(name, registry.index, userAgent, registry.token, log)
 
-  versionsCache.set(name, versions)
+  versionsCache.set(cacheKey, versions)
   return versions
 }
 
@@ -275,7 +277,8 @@ const parseRelease = (s: string, name: string): semver.SemVer | Error | undefine
     return new Error(`invalid JSON: ${err}`)
   }
 
-  if (r.name !== name) {
+  // Crate names are case-insensitive in the index
+  if (r.name?.toLowerCase() !== name.toLowerCase()) {
     return new Error(`crate name mismatch: ${r.name}`)
   }
   if (r.yanked === undefined) {
@@ -298,8 +301,12 @@ const resolveCacheDir = (cacheDir: string): string => {
   return path.resolve(cargoHome, 'registry/index', cacheDir, '.cache')
 }
 
-/** https://docs.rs/cargo/latest/cargo/sources/registry/index.html#the-format-of-the-index */
-const resolveIndexPath = (name: string): string => {
+/**
+ * https://docs.rs/cargo/latest/cargo/sources/registry/index.html#the-format-of-the-index
+ * Index paths are always lowercase, even for crates like `Inflector`.
+ */
+export const resolveIndexPath = (crateName: string): string => {
+  const name = crateName.toLowerCase()
   const len = name.length
   if (len === 0) {
     return ''

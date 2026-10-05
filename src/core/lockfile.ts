@@ -30,6 +30,9 @@ export interface CargoLockfile {
 
 const execFileAsync = promisify(execFile)
 
+/** Timeout for `cargo metadata` in milliseconds */
+const CARGO_METADATA_TIMEOUT_MS = 10000
+
 /**
  * Find the Cargo.lock file for a given Cargo.toml file.
  * Uses `cargo metadata` to find the workspace root, then looks for Cargo.lock there.
@@ -38,6 +41,8 @@ export async function findCargoLockPath(cargoTomlPath: string): Promise<string |
   try {
     const { stdout } = await execFileAsync('cargo', ['metadata', '--format-version', '1', '--no-deps'], {
       cwd: path.dirname(cargoTomlPath),
+      timeout: CARGO_METADATA_TIMEOUT_MS,
+      maxBuffer: 10 * 1024 * 1024,
     })
     const metadata = JSON.parse(stdout) as { workspace_root?: string }
     const workspaceRoot = metadata.workspace_root

@@ -16,12 +16,15 @@
   ],
   "publisher": "alfatm",
   "homepage": "https://github.com/alfatm/fancy-crates",
+  "bugs": {
+    "url": "https://github.com/alfatm/fancy-crates/issues"
+  },
   "repository": {
-    "type": "github",
+    "type": "git",
     "url": "https://github.com/alfatm/fancy-crates.git"
   },
   "engines": {
-    "vscode": "^1.72.0",
+    "vscode": "^1.73.0",
     "node": ">=16"
   },
   "license": "MIT",
@@ -47,6 +50,13 @@
   "activationEvents": [
     "workspaceContains:**/Cargo.toml"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Fancy Crates runs cargo, git and cargo-deny in the workspace, which can execute code configured by the repository."
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "commands": [
       {
@@ -117,6 +127,38 @@
           "default": [],
           "description": "A list of alternate registries. The index of an alternate registry must support the sparse protocol."
         },
+        "fancy-crates.gitHosts": {
+          "type": "array",
+          "scope": "resource",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Host name of the git server, e.g. \"github.mycompany.com\"."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "github",
+                  "gitlab"
+                ],
+                "description": "Hosting platform, used to build raw file URLs."
+              },
+              "token": {
+                "type": "string",
+                "description": "Access token for private repositories, sent as a Bearer token to this host only."
+              }
+            },
+            "required": [
+              "host",
+              "type"
+            ]
+          },
+          "default": [],
+          "markdownDescription": "Self-hosted GitHub/GitLab servers used to read Cargo.toml of git dependencies over HTTP when `git archive` is not available."
+        },
         "fancy-crates.logLevel": {
           "type": "string",
           "scope": "window",
@@ -143,6 +185,7 @@
     "watch": "vite build --watch",
     "package": "pnpm dlx @vscode/vsce@latest package --no-dependencies --out dist",
     "publish": "pnpm dlx @vscode/vsce@latest publish --no-dependencies",
+    "publish:ovsx": "pnpm dlx ovsx@latest publish --no-dependencies",
     "build:cli": "tsc && vite build",
     "cli": "node dist/cli.cjs",
     "fix": "biome format --fix && biome check --fix",
@@ -152,7 +195,7 @@
     "@biomejs/biome": "^2.3.8",
     "@types/node": "^18.19.130",
     "@types/semver": "^7.7.1",
-    "@types/vscode": "1.72.0",
+    "@types/vscode": "1.73.0",
     "commander": "^14.0.2",
     "typescript": "^5.9.3",
     "vite": "^6.4.1"

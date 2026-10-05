@@ -1,10 +1,14 @@
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
+import { escapeMarkdown } from './format'
 import type { Logger } from './types'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+/** Timeout for the cargo-deny availability check in milliseconds */
+const CARGO_DENY_VERSION_TIMEOUT_MS = 10000
 
 /**
  * Advisory information from cargo-deny
@@ -75,16 +79,26 @@ interface CargoDenyDiagnostic {
   }
 }
 
+/** Cached cargo-deny availability check result */
+let cargoDenyAvailable: Promise<boolean> | undefined
+
 /**
- * Check if cargo-deny is installed
+ * Check if cargo-deny is installed.
+ * The result is cached for the lifetime of the process, see `resetCargoDenyCache`.
  */
-export async function isCargoDenyAvailable(): Promise<boolean> {
-  try {
-    await execAsync('cargo deny --version')
-    return true
-  } catch {
-    return false
-  }
+export function isCargoDenyAvailable(): Promise<boolean> {
+  cargoDenyAvailable ??= execFileAsync('cargo', ['deny', '--version'], { timeout: CARGO_DENY_VERSION_TIMEOUT_MS }).then(
+    () => true,
+    () => false,
+  )
+  return cargoDenyAvailable
+}
+
+/**
+ * Reset the cached cargo-deny availability (e.g. after the user installs it)
+ */
+export function resetCargoDenyCache(): void {
+  cargoDenyAvailable = undefined
 }
 
 /**
@@ -130,8 +144,13 @@ function codeToKind(code: string): AdvisoryKind {
 
 /**
  * Run cargo-deny advisories check on a Cargo.toml file
+ * @param signal - Aborting it kills the cargo-deny process
  */
-export async function checkAdvisories(cargoTomlPath: string, logger?: Logger): Promise<CargoDenyResult> {
+export async function checkAdvisories(
+  cargoTomlPath: string,
+  logger?: Logger,
+  signal?: AbortSignal,
+): Promise<CargoDenyResult> {
   const available = await isCargoDenyAvailable()
   if (!available) {
     logger?.debug('cargo-deny is not installed')
@@ -144,13 +163,18 @@ export async function checkAdvisories(cargoTomlPath: string, logger?: Logger): P
   try {
     // Run cargo-deny with JSON output
     // Note: cargo-deny outputs to stderr and returns exit code 1 if there are issues
-    const { stdout, stderr } = await execAsync(
-      `cargo deny --manifest-path "${cargoTomlPath}" --format json check advisories`,
+    const { stdout, stderr } = await execFileAsync(
+      'cargo',
+      ['deny', '--manifest-path', cargoTomlPath, '--format', 'json', 'check', 'advisories'],
       {
         cwd: manifestDir,
         maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
+        signal,
       },
     ).catch((err) => {
+      if (signal?.aborted) {
+        throw err
+      }
       // cargo-deny returns non-zero exit code when issues are found
       // but still outputs valid JSON
       return { stdout: err.stdout ?? '', stderr: err.stderr ?? '' }
@@ -206,6 +230,9 @@ export async function checkAdvisories(cargoTomlPath: string, logger?: Logger): P
     logger?.info(`cargo-deny found advisories for ${advisories.size} packages`)
     return { available: true, advisories }
   } catch (err) {
+    if (signal?.aborted) {
+      throw err
+    }
     const errorMessage = err instanceof Error ? err.message : String(err)
     logger?.warn(`cargo-deny check failed: ${errorMessage}`)
     return { available: true, advisories: new Map(), error: errorMessage }
@@ -230,17 +257,18 @@ export function formatAdvisoriesForHover(advisories: Advisory[]): string {
     const kindEmoji = getAdvisoryEmoji(advisory.kind)
     const severityLabel = advisory.severity === 'error' ? '**ERROR**' : 'warning'
 
+    const id = escapeMarkdown(advisory.id)
     lines.push('')
-    if (advisory.url) {
-      lines.push(`${kindEmoji} [${advisory.id}](${advisory.url}) (${severityLabel})`)
+    if (advisory.url && /^https?:\/\//.test(advisory.url)) {
+      lines.push(`${kindEmoji} [${id}](${encodeURI(advisory.url)}) (${severityLabel})`)
     } else {
-      lines.push(`${kindEmoji} ${advisory.id} (${severityLabel})`)
+      lines.push(`${kindEmoji} ${id} (${severityLabel})`)
     }
-    lines.push(`> ${advisory.title}`)
+    lines.push(`> ${escapeMarkdown(advisory.title)}`)
 
     if (advisory.solution) {
       lines.push(``)
-      lines.push(`**Solution:** ${advisory.solution}`)
+      lines.push(`**Solution:** ${escapeMarkdown(advisory.solution)}`)
     }
   }
 

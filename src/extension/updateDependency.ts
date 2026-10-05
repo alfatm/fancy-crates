@@ -1,5 +1,8 @@
+import path from 'node:path'
+
 import { Range, WorkspaceEdit, window, workspace } from 'vscode'
 
+import { buildNewRequirement } from '../core/format'
 import log from './log'
 
 export interface UpdateDependencyArgs {
@@ -20,7 +23,17 @@ export interface UpdateDependencyArgs {
 export async function updateDependencyVersion(args: UpdateDependencyArgs): Promise<void> {
   const { filePath, line, newVersion, crateName } = args
 
+  // The command is invoked from hover links; never touch anything but a Cargo.toml manifest
+  if (typeof filePath !== 'string' || path.basename(filePath) !== 'Cargo.toml' || !Number.isInteger(line)) {
+    log.warn(`[${crateName}] Refusing to update dependency in ${filePath}`)
+    return
+  }
+
   const document = await workspace.openTextDocument(filePath)
+  if (line < 0 || line >= document.lineCount) {
+    log.warn(`[${crateName}] Line ${line + 1} is out of range`)
+    return
+  }
   const lineText = document.lineAt(line).text
 
   // Match version patterns:
@@ -55,17 +68,26 @@ export async function updateDependencyVersion(args: UpdateDependencyArgs): Promi
   const matchIndex = match.index ?? 0
   const startCol = matchIndex + prefix.length
   const endCol = startCol + version.length
+  const replacement = buildNewRequirement(version, newVersion)
+
+  // Remember whether the user has unsaved changes before we edit the document
+  const wasDirty = document.isDirty
 
   const edit = new WorkspaceEdit()
   const range = new Range(line, startCol, line, endCol)
-  edit.replace(document.uri, range, newVersion)
+  edit.replace(document.uri, range, replacement)
 
   const success = await workspace.applyEdit(edit)
 
   if (success) {
-    log.info(`[${crateName}] Updated version: ${version} -> ${newVersion}`)
-    // Save the document to trigger re-decoration
-    await document.save()
+    log.info(`[${crateName}] Updated version: ${version} -> ${replacement}`)
+    if (wasDirty) {
+      // Do not save the user's unrelated unsaved changes; decorations refresh on their next save
+      log.debug(`[${crateName}] Document has unsaved changes, not saving automatically`)
+    } else {
+      // Save the document to trigger re-decoration
+      await document.save()
+    }
   } else {
     log.error(`[${crateName}] Failed to update version to ${newVersion}`)
     window.showErrorMessage(`Failed to update ${crateName}`)

@@ -18,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `# crates: disable-check` on a dependency line skips that crate
   - `#! crates: disable-check` at file start disables all checks in the file
 - **Reload command**: New `Fancy Crates: Reload (Clear Cache)` command that clears all caches and reloads the current file
+- **`fancy-crates.gitHosts` setting**: Configure self-hosted GitHub/GitLab servers (with optional tokens) for resolving git dependency versions over HTTP
+
+### Fixed
+
+- Alternate registries and crates.io mirrors from `.cargo/config.toml` were never loaded on stable Cargo (`cargo config get` is unstable). Config files, `credentials.toml` and `CARGO_REGISTRIES_*` env vars are now read directly.
+- Crates with uppercase names (e.g. `Inflector`) failed with "crate not found"
+- Versions cache mixed up crates with the same name from different registries
+- The same `Cargo.toml` opened in a split view was left undecorated
+- Hover links can only run the extension's own update command; values from `Cargo.toml` are escaped
+- `cargo-deny` is run without a shell, its availability is cached, and cancelled checks kill the process
+- HTTP requests for git dependencies now time out
+- Editing the file during validation no longer shows an error popup; stale decorations are cleared on TOML parse errors
+- "Update to latest" keeps the `^`/`~`/`=` operator and no longer saves unrelated unsaved changes
+- `#! crates: disable-check` only applies when it is in the file header
+- Files like `MyCargo.toml` are no longer treated as manifests
+
+### Changed
+
+- Minimum VS Code version is now 1.73
+- The extension is disabled in untrusted workspaces, since it runs `cargo`, `git` and `cargo-deny`
 
 ## [1.1.2] - 2025-12-02
 

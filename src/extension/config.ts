@@ -5,7 +5,7 @@ import { type ConfigurationScope, type Uri, workspace } from 'vscode'
 import type { CargoConfig } from '../core/cargo'
 import { getSourceReplacement, loadCargoConfig } from '../core/cargo'
 import { CRATES_IO_CACHE, CRATES_IO_INDEX, mergeRegistries, type RegistryConfig } from '../core/config'
-import type { ValidatorConfig } from '../core/types'
+import type { CustomGitHost, ValidatorConfig } from '../core/types'
 import log from './log'
 
 /** User agent for VSCode extension requests */
@@ -86,7 +86,26 @@ export function buildValidatorConfig(scope: ConfigurationScope): ValidatorConfig
     useCargoCache: vscodeConfig.get('useCargoCache') ?? true,
     registries,
     sourceReplacement,
+    fetchOptions: {
+      gitOptions: { customHosts: getGitHosts(vscodeConfig.get('gitHosts')) },
+    },
   }
+}
+
+/** Validate the `fancy-crates.gitHosts` setting, dropping malformed entries */
+function getGitHosts(value: unknown): CustomGitHost[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.filter(
+    (h): h is CustomGitHost =>
+      typeof h === 'object' &&
+      h !== null &&
+      typeof h.host === 'string' &&
+      h.host !== '' &&
+      (h.type === 'github' || h.type === 'gitlab') &&
+      (h.token === undefined || typeof h.token === 'string'),
+  )
 }
 
 function getCrateIoIndex(scope: ConfigurationScope): URL {

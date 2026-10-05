@@ -18,3 +18,4 @@ CODE_STYLE.md
 presentation.html
 CHANGES.md
 API.md
+dist/cli.cjs

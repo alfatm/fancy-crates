@@ -28,8 +28,8 @@ importers:
         specifier: ^7.7.1
         version: 7.7.1
       '@types/vscode':
-        specifier: 1.72.0
-        version: 1.72.0
+        specifier: 1.73.0
+        version: 1.73.0
       commander:
         specifier: ^14.0.2
         version: 14.0.2
@@ -370,8 +370,8 @@ packages:
   '@types/semver@7.7.1':
     resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
 
-  '@types/vscode@1.72.0':
-    resolution: {integrity: sha512-WvHluhUo+lQvE3I4wUagRpnkHuysB4qSyOQUyIAS9n9PYMJjepzTUD8Jyks0YeXoPD0UGctjqp2u84/b3v6Ydw==}
+  '@types/vscode@1.73.0':
+    resolution: {integrity: sha512-FhkfF7V3fj7S3WqXu7AxFesBLO3uMkdCPJJPbwyZXezv2xJ6xBWHYM2CmkkbO8wT9Fr3KipwxGGOoQRrYq7mHg==}
 
   commander@14.0.2:
     resolution: {integrity: sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ==}
@@ -679,7 +679,7 @@ snapshots:
 
   '@types/semver@7.7.1': {}
 
-  '@types/vscode@1.72.0': {}
+  '@types/vscode@1.73.0': {}
 
   commander@14.0.2: {}
 

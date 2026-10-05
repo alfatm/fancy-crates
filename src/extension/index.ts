@@ -1,6 +1,8 @@
+import path from 'node:path'
+
 import { commands, type ExtensionContext, ProgressLocation, type TextEditor, window, workspace } from 'vscode'
 import packageJson from '../../package.json' with { type: 'json' }
-import { clearVersionsCache, resetCliToolsCache } from '../core/index'
+import { clearVersionsCache, resetCargoDenyCache, resetCliToolsCache } from '../core/index'
 import { clearCargoConfigCache } from './config'
 import { cancelPendingAdvisoryCheck, decorate, disposeDecorations } from './decorate'
 import log from './log'
@@ -9,8 +11,8 @@ import { type UpdateDependencyArgs, updateDependencyVersion } from './updateDepe
 /** Track decorated editors to avoid redundant decoration */
 const decoratedEditors = new Set<TextEditor>()
 
-/** Track pending decoration operations */
-const pendingDecorations = new Map<string, AbortController>()
+/** Track pending decoration operations per editor (the same file may be open in several editors) */
+const pendingDecorations = new Map<TextEditor, AbortController>()
 
 /** Extract short display name from full file path */
 const getDisplayPath = (filePath: string): string => {
@@ -43,7 +45,7 @@ export function activate(context: ExtensionContext) {
     for (const editor of decoratedEditors) {
       if (!editors.includes(editor)) {
         decoratedEditors.delete(editor)
-        cancelPendingDecoration(editor.document.fileName)
+        cancelPendingDecoration(editor)
       }
     }
 
@@ -58,9 +60,8 @@ export function activate(context: ExtensionContext) {
 
   // Decorate files when their changes are saved
   const saveListener = workspace.onDidSaveTextDocument((document) => {
-    if (document.fileName.endsWith('Cargo.toml')) {
-      const editor = window.visibleTextEditors.find((e) => e.document === document)
-      if (editor !== undefined) {
+    for (const editor of window.visibleTextEditors) {
+      if (editor.document === document && isCargoToml(editor)) {
         decorateWithProgress(editor)
       }
     }
@@ -124,27 +125,27 @@ export function deactivate() {
 }
 
 function isCargoToml(editor: TextEditor): boolean {
-  return editor.document.fileName.endsWith('Cargo.toml')
+  return path.basename(editor.document.fileName) === 'Cargo.toml'
 }
 
-function cancelPendingDecoration(fileName: string) {
-  const controller = pendingDecorations.get(fileName)
+function cancelPendingDecoration(editor: TextEditor) {
+  const controller = pendingDecorations.get(editor)
   if (controller) {
     controller.abort()
-    pendingDecorations.delete(fileName)
+    pendingDecorations.delete(editor)
   }
   // Also cancel any pending advisory check
-  cancelPendingAdvisoryCheck(fileName)
+  cancelPendingAdvisoryCheck(editor)
 }
 
 async function decorateWithProgress(editor: TextEditor): Promise<void> {
   const fileName = editor.document.fileName
 
-  // Cancel any pending decoration for this file
-  cancelPendingDecoration(fileName)
+  // Cancel any pending decoration for this editor
+  cancelPendingDecoration(editor)
 
   const controller = new AbortController()
-  pendingDecorations.set(fileName, controller)
+  pendingDecorations.set(editor, controller)
 
   try {
     await window.withProgress(
@@ -166,7 +167,9 @@ async function decorateWithProgress(editor: TextEditor): Promise<void> {
       window.showErrorMessage(`Fancy Crates: Failed to check dependencies. See output for details.`)
     }
   } finally {
-    pendingDecorations.delete(fileName)
+    if (pendingDecorations.get(editor) === controller) {
+      pendingDecorations.delete(editor)
+    }
   }
 }
 
@@ -183,8 +186,9 @@ function reloadCurrentFile() {
   clearCargoConfigCache()
   clearVersionsCache()
   resetCliToolsCache()
+  resetCargoDenyCache()
 
-  log.info('Caches cleared (versions, cargo config, CLI tools), reloading files')
+  log.info('Caches cleared (versions, cargo config, CLI tools, cargo-deny), reloading files')
 
   // Reload the active editor if it's a Cargo.toml
   const activeEditor = window.activeTextEditor

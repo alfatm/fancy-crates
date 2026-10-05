@@ -14,14 +14,27 @@ import type { Dependency, DependencySource } from './types'
 const DISABLE_CHECK_INLINE = /# *crates: *disable-check/i
 
 /** The disable-check comment pattern for the entire file (in the header) */
-const DISABLE_CHECK_FILE = /^#! *crates: *disable-check/im
+const DISABLE_CHECK_FILE = /^#! *crates: *disable-check/i
 
 /**
  * Check if the file has a file-level disable-check comment in the header.
- * The comment `#! crates: disable-check` at the beginning of the file disables all checks.
+ * The comment `#! crates: disable-check` among the leading comment lines of the file disables all checks.
  */
 export function hasFileDisableCheck(content: string): boolean {
-  return DISABLE_CHECK_FILE.test(content)
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim()
+    if (line === '') {
+      continue
+    }
+    if (!line.startsWith('#')) {
+      // The header ends at the first non-comment line
+      return false
+    }
+    if (DISABLE_CHECK_FILE.test(line)) {
+      return true
+    }
+  }
+  return false
 }
 
 /**

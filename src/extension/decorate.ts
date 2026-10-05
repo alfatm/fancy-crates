@@ -66,6 +66,9 @@ export function disposeDecorations() {
   }
 }
 
+/** Commands that hover links are allowed to run */
+const HOVER_ENABLED_COMMANDS = ['fancy-crates.updateDependency']
+
 /** Build decoration options for a single dependency */
 function buildDecorationOptions(
   editor: TextEditor,
@@ -83,7 +86,8 @@ function buildDecorationOptions(
 
   // Build hover message with optional update command and advisories
   const hoverMessage = new MarkdownString(hoverMarkdown)
-  hoverMessage.isTrusted = true
+  // Only allow our own command, so that values from Cargo.toml can never run arbitrary commands
+  hoverMessage.isTrusted = { enabledCommands: HOVER_ENABLED_COMMANDS }
 
   // Add update button if there's a newer version available
   if (updateVersion && depResult.dependency.source.type === 'registry') {
@@ -134,7 +138,12 @@ function applyDecorations(
     ALL_STATUSES.map((status) => [status, [] as DecorationOptions[]]),
   ) as Record<DependencyStatus, DecorationOptions[]>
 
+  const lineCount = editor.document.lineCount
   for (const depResult of dependencies) {
+    // The document may have been edited while validation was running
+    if (depResult.dependency.line >= lineCount) {
+      continue
+    }
     const { status, options } = buildDecorationOptions(editor, depResult, fileName, docsUrl, advisories)
     decorationsByStatus[status].push(options)
   }
@@ -146,15 +155,23 @@ function applyDecorations(
   }
 }
 
-/** Track pending advisory checks per file to allow cancellation */
-const pendingAdvisoryChecks = new Map<string, AbortController>()
+/** Remove all decorations from the editor */
+function clearDecorations(editor: TextEditor) {
+  const types = getDecorationTypes()
+  for (const status of ALL_STATUSES) {
+    editor.setDecorations(types[status], [])
+  }
+}
 
-/** Cancel any pending advisory check for a file */
-export function cancelPendingAdvisoryCheck(fileName: string): void {
-  const controller = pendingAdvisoryChecks.get(fileName)
+/** Track pending advisory checks per editor to allow cancellation */
+const pendingAdvisoryChecks = new Map<TextEditor, AbortController>()
+
+/** Cancel any pending advisory check for an editor */
+export function cancelPendingAdvisoryCheck(editor: TextEditor): void {
+  const controller = pendingAdvisoryChecks.get(editor)
   if (controller) {
     controller.abort()
-    pendingAdvisoryChecks.delete(fileName)
+    pendingAdvisoryChecks.delete(editor)
   }
 }
 
@@ -177,8 +194,8 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal, progres
 
   log.info(`[${displayPath}] Starting dependency validation`)
 
-  // Cancel any pending advisory check for this file
-  cancelPendingAdvisoryCheck(filePath)
+  // Cancel any pending advisory check for this editor
+  cancelPendingAdvisoryCheck(editor)
 
   // Check if already aborted
   if (signal?.aborted) {
@@ -232,6 +249,8 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal, progres
 
   if (result.parseError) {
     log.error(`[${displayPath}] TOML parse error: ${result.parseError.message}`)
+    // Line numbers of old decorations are no longer reliable
+    clearDecorations(editor)
     return
   }
 
@@ -248,7 +267,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal, progres
 
   // Create abort controller for advisory check
   const advisoryController = new AbortController()
-  pendingAdvisoryChecks.set(filePath, advisoryController)
+  pendingAdvisoryChecks.set(editor, advisoryController)
 
   // Link parent signal to advisory controller
   if (signal) {
@@ -256,7 +275,7 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal, progres
   }
 
   // Run cargo-deny in background and update decorations when done
-  checkAdvisories(filePath, log)
+  checkAdvisories(filePath, log, advisoryController.signal)
     .then((advisoryResult) => {
       // Check if aborted
       if (advisoryController.signal.aborted) {
@@ -291,8 +310,8 @@ export async function decorate(editor: TextEditor, signal?: AbortSignal, progres
     })
     .finally(() => {
       // Clean up tracking
-      if (pendingAdvisoryChecks.get(filePath) === advisoryController) {
-        pendingAdvisoryChecks.delete(filePath)
+      if (pendingAdvisoryChecks.get(editor) === advisoryController) {
+        pendingAdvisoryChecks.delete(editor)
       }
     })
 }

@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import semver from 'semver'
 import { parseTOML } from 'toml-eslint-parser'
 import type { TOMLKeyValue, TOMLTable } from 'toml-eslint-parser/lib/ast/ast'
+import { fetch } from 'undici'
 
 import type { CliToolsAvailability, CustomGitHost, DependencySource, FetchOptions } from './types'
 
@@ -13,6 +14,36 @@ const execAsync = promisify(exec)
 
 /** Timeout for git operations in milliseconds */
 const GIT_TIMEOUT_MS = 30000
+
+/** Timeout for HTTP requests to git hosts in milliseconds */
+const GIT_HTTP_TIMEOUT_MS = 30000
+
+/**
+ * Fetch a raw file from a git host with a timeout.
+ * Returns the response body, or the HTTP status if the request was not successful.
+ */
+async function fetchGitFile(
+  url: string,
+  userAgent?: string,
+  token?: string,
+): Promise<{ ok: true; text: string } | { ok: false; status: string }> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), GIT_HTTP_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { headers: buildGitFetchHeaders(userAgent, token), signal: controller.signal })
+    if (!response.ok) {
+      return { ok: false, status: `${response.status} ${response.statusText}` }
+    }
+    return { ok: true, text: await response.text() }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`HTTP fetch timed out: ${url}`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 /**
  * Escape a string for safe use in shell commands.
@@ -240,22 +271,16 @@ async function tryHttpFetch(
 
     options?.logger?.debug(`[${crateName}] Fetching via HTTP: ${rawUrlResult.url}`)
 
-    const headers = buildGitFetchHeaders(options?.userAgent, rawUrlResult.token)
-    const response = await fetch(rawUrlResult.url, {
-      headers: Object.keys(headers).length > 0 ? headers : undefined,
-    })
+    const response = await fetchGitFile(rawUrlResult.url, options?.userAgent, rawUrlResult.token)
 
     if (!response.ok) {
       // Try root Cargo.toml if crate-specific path failed
       const rootRawUrlResult = getGitRawFileUrl(gitUrl, ref, undefined, customHosts)
       if (rootRawUrlResult && rootRawUrlResult.url !== rawUrlResult.url) {
         options?.logger?.debug(`[${crateName}] Trying root Cargo.toml`)
-        const rootHeaders = buildGitFetchHeaders(options?.userAgent, rootRawUrlResult.token)
-        const rootResponse = await fetch(rootRawUrlResult.url, {
-          headers: Object.keys(rootHeaders).length > 0 ? rootHeaders : undefined,
-        })
+        const rootResponse = await fetchGitFile(rootRawUrlResult.url, options?.userAgent, rootRawUrlResult.token)
         if (rootResponse.ok) {
-          const content = await rootResponse.text()
+          const content = rootResponse.text
           const info = extractCargoTomlInfo(content)
 
           // Use explicit version, or workspace version if usesWorkspaceVersion is true
@@ -285,11 +310,11 @@ async function tryHttpFetch(
 
       return {
         version: undefined,
-        error: new Error(`HTTP fetch failed: ${response.status} ${response.statusText}`),
+        error: new Error(`HTTP fetch failed: ${response.status}`),
       }
     }
 
-    const content = await response.text()
+    const content = response.text
     const info = extractCargoTomlInfo(content)
 
     // Use explicit version, or workspace version if usesWorkspaceVersion is true
@@ -364,13 +389,10 @@ async function searchWorkspaceMembersHttp(
 
     try {
       options?.logger?.debug(`[${crateName}] Trying workspace member: ${memberPath}`)
-      const headers = buildGitFetchHeaders(options?.userAgent, memberRawUrl.token)
-      const response = await fetch(memberRawUrl.url, {
-        headers: Object.keys(headers).length > 0 ? headers : undefined,
-      })
+      const response = await fetchGitFile(memberRawUrl.url, options?.userAgent, memberRawUrl.token)
 
       if (response.ok) {
-        const content = await response.text()
+        const content = response.text
         const memberName = extractPackageName(content)
         const memberInfo = extractCargoTomlInfo(content)
 
