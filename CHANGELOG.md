@@ -7,17 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
 ### Added
 
-- **Security advisory integration**: If `cargo-deny` is installed, Fancy Crates automatically checks for known vulnerabilities in your dependencies using the RustSec Advisory Database.
-  - Shows 🚨 emoji next to packages with security advisories
-  - Hover tooltip displays advisory details: ID, title, severity, and recommended solution
-  - Supports vulnerability, unmaintained, unsound, notice, and yanked advisory types
-  - Advisory check runs in parallel with version validation for minimal performance impact
-- **Disable check comments**: Skip version checking for specific dependencies or entire files using comments:
-  - `# crates: disable-check` on a dependency line skips that crate
-  - `#! crates: disable-check` at file start disables all checks in the file
-- **Reload command**: New `Fancy Crates: Reload (Clear Cache)` command that clears all caches and reloads the current file
 - **`fancy-crates.gitHosts` setting**: Configure self-hosted GitHub/GitLab servers (with optional tokens) for resolving git dependency versions over HTTP
 
 ### Fixed
@@ -38,6 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Minimum VS Code version is now 1.73
 - The extension is disabled in untrusted workspaces, since it runs `cargo`, `git` and `cargo-deny`
+
+## [1.2.14] - 2025-12-06
+
+### Added
+
+- **Security advisory integration**: If `cargo-deny` is installed, Fancy Crates automatically checks for known vulnerabilities in your dependencies using the RustSec Advisory Database.
+  - Shows 🚨 emoji next to packages with security advisories
+  - Hover tooltip displays advisory details: ID, title, severity, and recommended solution
+  - Supports vulnerability, unmaintained, unsound, notice, and yanked advisory types
+  - Advisory check runs in parallel with version validation for minimal performance impact
+- **Disable check comments**: Skip version checking for specific dependencies or entire files using comments:
+  - `# crates: disable-check` on a dependency line skips that crate
+  - `#! crates: disable-check` at file start disables all checks in the file
+- **Reload command**: New `Fancy Crates: Reload (Clear Cache)` command that clears all caches and reloads the current file
 
 ## [1.1.2] - 2025-12-02
 
